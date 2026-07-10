@@ -47,7 +47,7 @@ For a short diagnostic run, use `--limit 1 --attempts 1` to probe only the first
 
 The ping binary temporarily adds only itself to Mullvad split tunneling, performs native Windows ICMP probes, writes the JSON atomically, and removes its exception. The benchmark binary then uses the VPN normally and tests eligible cities sequentially. Speed tests transfer several megabytes per city.
 
-The tool uses mullvad-cli to add ``mullvad-ping.exe`` to the split tunnel exclusions, then pings VPN servers, then connect to each VPN server with ping lower than X, then perform another latency + download test (Cloudflare). 
+The tool uses mullvad-cli to add ``mullvad-ping.exe`` to the split tunnel exclusions, then pings VPN servers and writes that output to a ``json`` file. Then, the second program ``mullvad-benchmark.exe`` connects to each VPN server with ping lower than X, then perform another latency + download test (Cloudflare). The full run might take a while.
 
 Example output:
 
