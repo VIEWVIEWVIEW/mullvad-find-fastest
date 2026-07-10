@@ -26,7 +26,7 @@ The recommended launcher is:
 
 It runs both phases sequentially and only starts the benchmark if the ping phase succeeds.
 
-Run both phases sequentially. The benchmark phase starts only if the ping phase succeeds:
+If you want to run manually, with custom options, you can run both programs sequentially. The benchmark phase starts only if the ping phase succeeds:
 
 ```powershell
 & ".\mullvad-ping.exe" --output "mullvad-ping-results.json"
@@ -46,6 +46,8 @@ Adjust `--max-ping 80` to the desired maximum latency in milliseconds. Remove or
 For a short diagnostic run, use `--limit 1 --attempts 1` to probe only the first relay.
 
 The ping binary temporarily adds only itself to Mullvad split tunneling, performs native Windows ICMP probes, writes the JSON atomically, and removes its exception. The benchmark binary then uses the VPN normally and tests eligible cities sequentially. Speed tests transfer several megabytes per city.
+
+The tool uses mullvad-cli to add ``mullvad-ping.exe`` to the split tunnel exclusions, then pings VPN servers, then connect to each VPN server with ping lower than X, then perform another latency + download test (Cloudflare). 
 
 Example output:
 
