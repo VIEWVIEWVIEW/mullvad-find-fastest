@@ -1,6 +1,6 @@
-# Mullvad benchmark
+# Müllvatt find fastest
 
-Two Windows Go binaries for finding Mullvad cities with good latency and throughput.
+Two Windows Go binaries for finding Mullvad servers with good latency and throughput.
 
 ## Requirements
 
