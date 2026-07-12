@@ -3,7 +3,7 @@ param(
     [int]$MaxPing = 80,
     [string[]]$Exclude = @(),
     [switch]$SkipPing,
-    [string]$PingOutput = "mullvad-ping-results.json",
+    [string]$PingOutput = "",
     [string]$BenchmarkOutput = "benchmark.json"
 )
 
@@ -15,8 +15,12 @@ $BenchmarkBinary = Join-Path $Root "mullvad-benchmark.exe"
 if (-not (Test-Path -LiteralPath $BenchmarkBinary)) {
     throw "Missing $BenchmarkBinary. Build mullvad-benchmark.exe first."
 }
-if (-not $SkipPing -and -not (Test-Path -LiteralPath $PingBinary)) {
+if (-not $SkipPing -and -not [string]::IsNullOrWhiteSpace($PingOutput) -and -not (Test-Path -LiteralPath $PingBinary)) {
     throw "Missing $PingBinary. Build mullvad-ping.exe first."
+}
+
+if ([string]::IsNullOrWhiteSpace($PingOutput)) {
+    $SkipPing = $true
 }
 
 Push-Location $Root
@@ -28,20 +32,19 @@ try {
         }
     }
 
+    $BenchmarkArgs = @(
+        "--output", $BenchmarkOutput
+    )
     if ($SkipPing) {
-        $BenchmarkArgs = @(
-            "--skip-ping",
-            "--output", $BenchmarkOutput
-        )
+        $BenchmarkArgs += "--skip-ping"
     } else {
-        $BenchmarkArgs = @(
+        $BenchmarkArgs += @(
             "--input", $PingOutput,
-            "--max-ping", $MaxPing,
-            "--output", $BenchmarkOutput
+            "--max-ping", $MaxPing
         )
-        foreach ($Location in $Exclude) {
-            $BenchmarkArgs += @("--exclude", $Location)
-        }
+    }
+    foreach ($Location in $Exclude) {
+        $BenchmarkArgs += @("--exclude", $Location)
     }
 
     & $BenchmarkBinary @BenchmarkArgs
