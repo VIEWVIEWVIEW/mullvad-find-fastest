@@ -46,6 +46,14 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/mullvad-ping.exe ./cmd/mullvad-ping
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/mullvad-benchmark.exe ./cmd/mullvad-benchmark
 
+      - name: Package release bundle
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "dist/mullvad-ping.exe","dist/mullvad-benchmark.exe","${{ github.workspace }}\\Start-MullvadBenchmark.ps1" `
+            -DestinationPath "dist/mullvad-find-fastest-windows-amd64.zip" `
+            -Force
+
       - name: Generate changelog
         shell: bash
         run: |
@@ -72,5 +80,4 @@ jobs:
           name: "Mullvad find fastest ${{ steps.release.outputs.tag }}"
           body_path: release-notes.md
           files: |
-            dist/mullvad-ping.exe
-            dist/mullvad-benchmark.exe
+            dist/mullvad-find-fastest-windows-amd64.zip
