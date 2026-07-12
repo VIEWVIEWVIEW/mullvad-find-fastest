@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [int]$MaxPing = $null,
+    [int]$MaxPing = 0,
     [string[]]$Exclude = @(),
     [switch]$SkipPing,
     [string]$PingOutput = "mullvad-ping-results.json",
@@ -16,7 +16,7 @@ if (-not (Test-Path -LiteralPath $BenchmarkBinary)) {
     throw "Missing $BenchmarkBinary. Build mullvad-benchmark.exe first."
 }
 
-$NeedPing = (-not $SkipPing) -and ($null -ne $MaxPing)
+$NeedPing = (-not $SkipPing) -and $PSBoundParameters.ContainsKey("MaxPing")
 if ($NeedPing -and -not (Test-Path -LiteralPath $PingBinary)) {
     throw "Missing $PingBinary. Build mullvad-ping.exe first."
 }
