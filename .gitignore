@@ -1,0 +1,6 @@
+# Auto-generated benchmark artifacts
+benchmark.json
+benchmark.json.csv
+benchmark-*.json
+benchmark-*.json.csv
+mullvad-ping-results.json

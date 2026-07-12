@@ -51,8 +51,12 @@ type CityResult struct {
 	Country     string       `json:"country"`
 	CityCode    string       `json:"city_code"`
 	City        string       `json:"city"`
+	Provider    int          `json:"provider"`
+	RelayName   string       `json:"relay_name"`
 	RelayCount  int          `json:"relay_count"`
 	Reachable   int          `json:"reachable_relays"`
+	LocalErrors int          `json:"local_errors"`
+	NoReply     int          `json:"no_reply"`
 	PrePingMS   float64      `json:"pre_ping_ms"`
 	Speed       *SpeedResult `json:"speed,omitempty"`
 	Status      string       `json:"status"`

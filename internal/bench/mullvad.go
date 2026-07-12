@@ -40,8 +40,12 @@ func (m Mullvad) RemoveSplitApp(ctx context.Context, path string) error {
 	_, err := m.Run(ctx, "split-tunnel", "app", "remove", path)
 	return err
 }
-func (m Mullvad) SetLocation(ctx context.Context, country, city string) error {
-	_, err := m.Run(ctx, "relay", "set", "location", country, city)
+func (m Mullvad) SetLocation(ctx context.Context, country, city string, relayHost ...string) error {
+	args := []string{"relay", "set", "location", country, city}
+	if len(relayHost) > 0 && relayHost[0] != "" {
+		args = append(args, relayHost[0])
+	}
+	_, err := m.Run(ctx, args...)
 	return err
 }
 func (m Mullvad) Connect(ctx context.Context) error { _, err := m.Run(ctx, "connect"); return err }
