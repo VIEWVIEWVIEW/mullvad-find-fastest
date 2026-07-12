@@ -81,24 +81,42 @@ func main() {
 	original, _ := m.Status(ctx)
 	wasConnected := strings.HasPrefix(strings.ToLower(strings.TrimSpace(original)), "connected")
 	originalCountry, originalCity, hasOriginalLocation := bench.ParseLocation(original)
+	wasMultihopEnabled, hasMultihopState := false, false
+	if state, multihopErr := m.IsMultihopEnabled(ctx); multihopErr == nil {
+		wasMultihopEnabled, hasMultihopState = state, true
+		if state {
+			logf("multihop enabled, disabling for benchmark")
+			if err := m.SetMultihop(ctx, false); err != nil {
+				fmt.Fprintln(os.Stderr, "warning: could not disable multihop:", err)
+			}
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "warning: could not detect multihop state:", multihopErr)
+	}
 	defer restore(wasConnected, originalCountry, originalCity, hasOriginalLocation, m)
+	defer restoreMultihop(hasMultihopState, wasMultihopEnabled, m)
 	results := make([]bench.CityResult, 0, len(selected))
-	for _, city := range selected {
+	for idx, city := range selected {
+		logf("[%d/%d] testing %s/%s provider=%d relay=%s", idx+1, len(selected), city.CountryCode, city.CityCode, city.Provider, city.RelayName)
 		city.Status = "FAILED"
 		var err error
 		if err = m.SetLocation(ctx, city.CountryCode, city.CityCode, city.RelayName); err == nil {
+			logf("[%d/%d] connected location set, establishing tunnel", idx+1, len(selected))
 			err = m.Connect(ctx)
 		}
 		if err == nil {
 			err = bench.WaitConnected(ctx, m, *connectTimeout)
 		}
 		if err == nil {
+			logf("[%d/%d] running speed test", idx+1, len(selected))
 			city.Speed, err = (bench.Cloudflare{Timeout: 45 * time.Second}).Test(ctx)
 		}
 		if err != nil {
 			city.Error = err.Error()
+			logf("[%d/%d] failed: %s", idx+1, len(selected), err)
 		} else {
 			city.Status = "OK"
+			logf("[%d/%d] complete: latency=%0.0fms dl=%0.1f mbps ul=%0.1f mbps", idx+1, len(selected), city.Speed.LatencyMS, city.Speed.DownloadMB, city.Speed.UploadMB)
 		}
 		results = append(results, city)
 	}
@@ -148,6 +166,10 @@ func printRow(rank int, c bench.CityResult) {
 	}
 	fmt.Printf("%-5d %-8s %-18s %-9s %-10s %-9s %-12s %-11s %-9s %s\n", rank, c.CountryCode, c.City, provider, fmt.Sprintf("%d/%d", c.Reachable, c.RelayCount), prePing, lat, down, up, c.Status)
 }
+func logf(format string, args ...any) {
+	prefix := time.Now().Format("15:04:05.000")
+	fmt.Printf("[%s] %s\n", prefix, fmt.Sprintf(format, args...))
+}
 func restore(connected bool, country, city string, hasLocation bool, m bench.Mullvad) {
 	if !connected {
 		_ = m.Disconnect(context.Background())
@@ -168,6 +190,14 @@ func restore(connected bool, country, city string, hasLocation bool, m bench.Mul
 	}
 	if err := bench.WaitConnected(ctx, m, 45*time.Second); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: previous VPN location restoration timed out:", err)
+	}
+}
+func restoreMultihop(enabled bool, hasState bool, m bench.Mullvad) {
+	if !hasState || !enabled {
+		return
+	}
+	if err := m.SetMultihop(context.Background(), true); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: could not restore multihop setting:", err)
 	}
 }
 func writeCSV(path string, rows []bench.CityResult) {

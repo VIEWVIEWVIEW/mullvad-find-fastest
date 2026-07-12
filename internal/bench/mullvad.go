@@ -54,8 +54,24 @@ func (m Mullvad) Disconnect(ctx context.Context) error {
 	return err
 }
 func (m Mullvad) Status(ctx context.Context) (string, error) { return m.Run(ctx, "status", "-v") }
+func (m Mullvad) IsMultihopEnabled(ctx context.Context) (bool, error) {
+	out, err := m.Run(ctx, "relay", "get")
+	if err != nil {
+		return false, err
+	}
+	return parseRelayMultihopState(out)
+}
+func (m Mullvad) SetMultihop(ctx context.Context, enabled bool) error {
+	state := "off"
+	if enabled {
+		state = "on"
+	}
+	_, err := m.Run(ctx, "relay", "set", "multihop", state)
+	return err
+}
 
 var relayLocationRE = regexp.MustCompile(`(?m)Relay:\s+([a-z]{2})-([a-z0-9]{3})-`)
+var relayMultihopStateRE = regexp.MustCompile(`(?m)^\s*Multihop state:\s+([A-Za-z]+)\s*$`)
 
 func ParseLocation(status string) (country, city string, ok bool) {
 	m := relayLocationRE.FindStringSubmatch(status)
@@ -79,4 +95,19 @@ func WaitConnected(ctx context.Context, m Mullvad, timeout time.Duration) error 
 		}
 	}
 	return fmt.Errorf("timed out waiting for Mullvad connection")
+}
+
+func parseRelayMultihopState(out string) (bool, error) {
+	m := relayMultihopStateRE.FindStringSubmatch(out)
+	if m == nil {
+		return false, fmt.Errorf("unable to read multihop state from relay output")
+	}
+	switch strings.ToLower(m[1]) {
+	case "enabled", "on":
+		return true, nil
+	case "disabled", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("unknown multihop state: %s", m[1])
+	}
 }

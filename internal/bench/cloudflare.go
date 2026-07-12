@@ -1,11 +1,11 @@
 package bench
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 )
 
@@ -61,8 +61,10 @@ func (c Cloudflare) request(ctx context.Context, path string, body io.Reader) (t
 
 func (c Cloudflare) transfer(ctx context.Context, path, method string, body []byte) (float64, error) {
 	var reqBody io.Reader
+	var requestBytes int64
 	if body != nil {
-		reqBody = io.LimitReader(bytesReader(body), int64(len(body)))
+		reqBody = bytes.NewReader(body)
+		requestBytes = int64(len(body))
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+"/"+path, reqBody)
 	if err != nil {
@@ -77,7 +79,7 @@ func (c Cloudflare) transfer(ctx context.Context, path, method string, body []by
 		return 0, err
 	}
 	defer resp.Body.Close()
-	n, err := io.Copy(io.Discard, resp.Body)
+	responseBytes, err := io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		return 0, err
 	}
@@ -85,21 +87,9 @@ func (c Cloudflare) transfer(ctx context.Context, path, method string, body []by
 		return 0, fmt.Errorf("HTTP %s", resp.Status)
 	}
 	seconds := time.Since(start).Seconds()
-	return float64(n*8) / seconds / 1e6, nil
-}
-
-type byteReader struct {
-	b   []byte
-	pos int
-}
-
-func bytesReader(b []byte) io.Reader { return &byteReader{b: b} }
-func (r *byteReader) Read(p []byte) (int, error) {
-	if r.pos == len(r.b) {
-		return 0, io.EOF
+	transferredBytes := responseBytes
+	if body != nil {
+		transferredBytes = requestBytes
 	}
-	n := copy(p, r.b[r.pos:])
-	r.pos += n
-	return n, nil
+	return float64(transferredBytes*8) / seconds / 1e6, nil
 }
-func parseBytes(s string) int { n, _ := strconv.Atoi(s); return n }
