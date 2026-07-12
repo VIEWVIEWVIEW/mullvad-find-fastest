@@ -71,6 +71,7 @@ func (m Mullvad) SetMultihop(ctx context.Context, enabled bool) error {
 }
 
 var relayLocationRE = regexp.MustCompile(`(?m)Relay:\s+([a-z]{2})-([a-z0-9]{3})-`)
+var relayIdentityRE = regexp.MustCompile(`(?m)Relay:\s+([a-z]{2}-[a-z0-9]{3}-[^\s]+)\b`)
 var relayMultihopStateRE = regexp.MustCompile(`(?m)^\s*Multihop state:\s+([A-Za-z]+)\s*$`)
 
 func ParseLocation(status string) (country, city string, ok bool) {
@@ -79,6 +80,18 @@ func ParseLocation(status string) (country, city string, ok bool) {
 		return "", "", false
 	}
 	return m[1], m[2], true
+}
+
+func ParseRelayIdentity(status string) (country, city, relay string, ok bool) {
+	m := relayLocationRE.FindStringSubmatch(status)
+	if m == nil {
+		return "", "", "", false
+	}
+	mRelay := relayIdentityRE.FindStringSubmatch(status)
+	if mRelay == nil || len(mRelay) != 2 {
+		return m[1], m[2], "", true
+	}
+	return m[1], m[2], mRelay[1], true
 }
 
 func WaitConnected(ctx context.Context, m Mullvad, timeout time.Duration) error {

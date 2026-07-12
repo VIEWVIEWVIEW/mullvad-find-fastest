@@ -11,6 +11,13 @@ func TestParseLocation(t *testing.T) {
 	}
 }
 
+func TestParseRelayIdentity(t *testing.T) {
+	country, city, relay, ok := ParseRelayIdentity("Connected\n    Relay: al-tia-wg-003 (103.124.165.130:51820/UDP) via gb-lon-wg-308")
+	if !ok || country != "al" || city != "tia" || relay != "al-tia-wg-003" {
+		t.Fatalf("got %q %q %q %v", country, city, relay, ok)
+	}
+}
+
 func TestParseRelayMultihopState(t *testing.T) {
 	enabled, err := parseRelayMultihopState("WireGuard options\n    MTU: unset\nMultihop state: enabled")
 	if err != nil {

@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/example/mullvad-benchmark/internal/bench"
@@ -31,8 +34,8 @@ func main() {
 		*skipPing = true
 	}
 	m := bench.Mullvad{Binary: "mullvad", Timeout: 20 * time.Second}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	inputRun := "direct"
 	var cities []bench.CityResult
@@ -80,7 +83,7 @@ func main() {
 
 	original, _ := m.Status(ctx)
 	wasConnected := strings.HasPrefix(strings.ToLower(strings.TrimSpace(original)), "connected")
-	originalCountry, originalCity, hasOriginalLocation := bench.ParseLocation(original)
+	originalCountry, originalCity, originalRelay, hasOriginalLocation := bench.ParseRelayIdentity(original)
 	wasMultihopEnabled, hasMultihopState := false, false
 	if state, multihopErr := m.IsMultihopEnabled(ctx); multihopErr == nil {
 		wasMultihopEnabled, hasMultihopState = state, true
@@ -94,11 +97,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "warning: could not detect multihop state:", multihopErr)
 	}
 	defer restoreMultihop(hasMultihopState, wasMultihopEnabled, m)
-	defer restore(wasConnected, originalCountry, originalCity, hasOriginalLocation, m)
+	defer restore(wasConnected, originalCountry, originalCity, originalRelay, hasOriginalLocation, m)
 	results := make([]bench.CityResult, 0, len(selected))
 	for idx, city := range selected {
 		logf("[%d/%d] testing %s/%s provider=%d relay=%s", idx+1, len(selected), city.CountryCode, city.CityCode, city.Provider, city.RelayName)
 		city.Status = "FAILED"
+		if ctx.Err() != nil {
+			logf("[%d/%d] interrupted before test start; stopping", idx+1, len(selected))
+			break
+		}
 		var err error
 		if err = m.SetLocation(ctx, city.CountryCode, city.CityCode, city.RelayName); err == nil {
 			logf("[%d/%d] connected location set, establishing tunnel", idx+1, len(selected))
@@ -117,6 +124,11 @@ func main() {
 		} else {
 			city.Status = "OK"
 			logf("[%d/%d] complete: latency=%0.0fms dl=%0.1f mbps ul=%0.1f mbps", idx+1, len(selected), city.Speed.LatencyMS, city.Speed.DownloadMB, city.Speed.UploadMB)
+		}
+		if isInterrupted(ctx.Err()) {
+			results = append(results, city)
+			logf("[%d/%d] interrupted; stopping benchmark loop", idx+1, len(selected))
+			break
 		}
 		results = append(results, city)
 	}
@@ -170,7 +182,7 @@ func logf(format string, args ...any) {
 	prefix := time.Now().Format("15:04:05.000")
 	fmt.Printf("[%s] %s\n", prefix, fmt.Sprintf(format, args...))
 }
-func restore(connected bool, country, city string, hasLocation bool, m bench.Mullvad) {
+func restore(connected bool, country, city, relay string, hasLocation bool, m bench.Mullvad) {
 	if !connected {
 		_ = m.Disconnect(context.Background())
 		return
@@ -180,7 +192,11 @@ func restore(connected bool, country, city string, hasLocation bool, m bench.Mul
 		return
 	}
 	ctx := context.Background()
-	if err := m.SetLocation(ctx, country, city); err != nil {
+	args := []string{country, city}
+	if relay != "" {
+		args = append(args, relay)
+	}
+	if err := m.SetLocation(ctx, args[0], args[1], args[2:]...); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: could not restore previous VPN location:", err)
 		return
 	}
@@ -191,6 +207,9 @@ func restore(connected bool, country, city string, hasLocation bool, m bench.Mul
 	if err := bench.WaitConnected(ctx, m, 45*time.Second); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: previous VPN location restoration timed out:", err)
 	}
+}
+func isInterrupted(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 func restoreMultihop(enabled bool, hasState bool, m bench.Mullvad) {
 	if !hasState || !enabled {
