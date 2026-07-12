@@ -65,6 +65,14 @@ func Cities(relays []RelayPing) []CityResult {
 	return result
 }
 
+func CitiesFromRelays(relays []Relay) []CityResult {
+	rs := make([]RelayPing, 0, len(relays))
+	for _, r := range relays {
+		rs = append(rs, RelayPing{Relay: r})
+	}
+	return Cities(rs)
+}
+
 func Excluded(city CityResult, exclusions []string) bool {
 	for _, x := range exclusions {
 		if x == city.CountryCode || x == city.CountryCode+"-"+city.CityCode || x == city.RelayName {

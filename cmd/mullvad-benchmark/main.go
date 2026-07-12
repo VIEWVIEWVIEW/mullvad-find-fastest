@@ -16,7 +16,8 @@ import (
 )
 
 func main() {
-	input := flag.String("input", "mullvad-ping-results.json", "ping JSON path")
+	input := flag.String("input", "", "ping JSON path; optional when --skip-ping is set")
+	skipPing := flag.Bool("skip-ping", false, "skip ping preselection and benchmark providers directly from relay list")
 	output := flag.String("output", "", "optional benchmark JSON path")
 	maxPing := flag.Float64("max-ping", 0, "only test city providers at or below this pre-ping in ms; zero disables")
 	var excludes multiFlag
@@ -26,31 +27,57 @@ func main() {
 	if *output == "" {
 		*output = fmt.Sprintf("benchmark-results-%s.json", time.Now().Format("20060102-150405"))
 	}
-	b, err := os.ReadFile(*input)
-	if err != nil {
-		fatal(err)
-	}
-	var pf bench.PingFile
-	if err := json.Unmarshal(b, &pf); err != nil {
-		fatal(fmt.Errorf("invalid ping file: %w", err))
-	}
-	if pf.Version != 1 || len(pf.Relays) == 0 {
-		fatal(fmt.Errorf("unsupported or empty ping file"))
-	}
-	if time.Since(pf.CreatedAt) > 24*time.Hour {
-		fatal(fmt.Errorf("ping file is older than 24 hours"))
-	}
-	cities := bench.Cities(pf.Relays)
-	selected := cities[:0]
-	for _, c := range cities {
-		if bench.Excluded(c, excludes) || (*maxPing > 0 && c.PrePingMS > *maxPing) {
-			continue
-		}
-		selected = append(selected, c)
+	if *input == "" {
+		*skipPing = true
 	}
 	m := bench.Mullvad{Binary: "mullvad", Timeout: 20 * time.Second}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	inputRun := "direct"
+	var cities []bench.CityResult
+	if *skipPing {
+		if *maxPing > 0 {
+			fmt.Fprintln(os.Stderr, "warning: --max-ping is ignored when skipping ping")
+		}
+		relays, err := m.ListRelays(ctx)
+		if err != nil {
+			fatal(err)
+		}
+		cities = bench.CitiesFromRelays(relays)
+	} else {
+		var pf bench.PingFile
+		b, readErr := os.ReadFile(*input)
+		if readErr != nil {
+			fatal(readErr)
+		}
+		if err := json.Unmarshal(b, &pf); err != nil {
+			fatal(fmt.Errorf("invalid ping file: %w", err))
+		}
+		if pf.Version != 1 || len(pf.Relays) == 0 {
+			fatal(fmt.Errorf("unsupported or empty ping file"))
+		}
+		if time.Since(pf.CreatedAt) > 24*time.Hour {
+			fatal(fmt.Errorf("ping file is older than 24 hours"))
+		}
+		inputRun = pf.RunID
+		cities = bench.Cities(pf.Relays)
+	}
+	selected := cities[:0]
+	for _, c := range cities {
+		if bench.Excluded(c, excludes) {
+			continue
+		}
+		if !*skipPing && *maxPing > 0 && c.PrePingMS > *maxPing {
+			continue
+		}
+		selected = append(selected, c)
+	}
+
+	if len(selected) == 0 {
+		fatal(fmt.Errorf("no providers selected"))
+	}
+
 	original, _ := m.Status(ctx)
 	wasConnected := strings.HasPrefix(strings.ToLower(strings.TrimSpace(original)), "connected")
 	originalCountry, originalCity, hasOriginalLocation := bench.ParseLocation(original)
@@ -58,7 +85,8 @@ func main() {
 	results := make([]bench.CityResult, 0, len(selected))
 	for _, city := range selected {
 		city.Status = "FAILED"
-		if err := m.SetLocation(ctx, city.CountryCode, city.CityCode, city.RelayName); err == nil {
+		var err error
+		if err = m.SetLocation(ctx, city.CountryCode, city.CityCode, city.RelayName); err == nil {
 			err = m.Connect(ctx)
 		}
 		if err == nil {
@@ -88,7 +116,7 @@ func main() {
 		printRow(i+1, city)
 	}
 	if *output != "" {
-		out := bench.BenchmarkFile{Version: 1, RunID: fmt.Sprintf("%d", time.Now().UnixNano()), CreatedAt: time.Now().UTC(), InputRun: pf.RunID, Results: results}
+		out := bench.BenchmarkFile{Version: 1, RunID: fmt.Sprintf("%d", time.Now().UnixNano()), CreatedAt: time.Now().UTC(), InputRun: inputRun, Results: results}
 		if err := bench.WriteJSONAtomic(*output, out); err != nil {
 			fatal(err)
 		}
@@ -109,12 +137,16 @@ func printRow(rank int, c bench.CityResult) {
 	if c.Provider > 0 {
 		provider = strconv.Itoa(c.Provider)
 	}
+	prePing := "-"
+	if c.PrePingMS > 0 {
+		prePing = fmt.Sprintf("%.0f", c.PrePingMS)
+	}
 	if c.Speed != nil {
 		lat = fmt.Sprintf("%.0f ms", c.Speed.LatencyMS)
 		down = fmt.Sprintf("%.1f", c.Speed.DownloadMB)
 		up = fmt.Sprintf("%.1f", c.Speed.UploadMB)
 	}
-	fmt.Printf("%-5d %-8s %-18s %-9s %-10s %-9.0f %-12s %-11s %-9s %s\n", rank, c.CountryCode, c.City, provider, fmt.Sprintf("%d/%d", c.Reachable, c.RelayCount), c.PrePingMS, lat, down, up, c.Status)
+	fmt.Printf("%-5d %-8s %-18s %-9s %-10s %-9s %-12s %-11s %-9s %s\n", rank, c.CountryCode, c.City, provider, fmt.Sprintf("%d/%d", c.Reachable, c.RelayCount), prePing, lat, down, up, c.Status)
 }
 func restore(connected bool, country, city string, hasLocation bool, m bench.Mullvad) {
 	if !connected {

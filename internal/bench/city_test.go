@@ -69,3 +69,14 @@ func TestCitiesSelectionSkipsOnlyNoReplyWhenUnreachable(t *testing.T) {
 		t.Fatalf("unexpected local-error aggregation %#v", localErrorProvider)
 	}
 }
+
+func TestCitiesFromRelays(t *testing.T) {
+	cities := CitiesFromRelays([]Relay{
+		{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-001"},
+		{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-099"},
+		{CountryCode: "de", CityCode: "fra", Country: "Germany", City: "Frankfurt", Name: "de-fra-wg-100"},
+	})
+	if len(cities) != 2 {
+		t.Fatalf("expected 2 grouped providers, got %d", len(cities))
+	}
+}

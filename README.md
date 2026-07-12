@@ -41,6 +41,18 @@ if ($LASTEXITCODE -eq 0) {
 }
 ```
 
+To skip the ping step and jump directly to VPN speed tests, use `-SkipPing`:
+
+```powershell
+.\Start-MullvadBenchmark.ps1 -SkipPing -Exclude us -Exclude se-mma
+```
+
+For direct binary usage:
+
+```powershell
+& ".\mullvad-benchmark.exe" --skip-ping --output "benchmark.json"
+```
+
 Adjust `--max-ping 80` to the desired maximum latency in milliseconds. Remove or add `--exclude` options as needed.
 
 For a short diagnostic run, use `--limit 1 --attempts 1` to probe only the first relay.
