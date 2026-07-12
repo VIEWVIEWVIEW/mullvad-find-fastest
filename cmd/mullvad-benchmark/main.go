@@ -93,8 +93,8 @@ func main() {
 	} else {
 		fmt.Fprintln(os.Stderr, "warning: could not detect multihop state:", multihopErr)
 	}
-	defer restore(wasConnected, originalCountry, originalCity, hasOriginalLocation, m)
 	defer restoreMultihop(hasMultihopState, wasMultihopEnabled, m)
+	defer restore(wasConnected, originalCountry, originalCity, hasOriginalLocation, m)
 	results := make([]bench.CityResult, 0, len(selected))
 	for idx, city := range selected {
 		logf("[%d/%d] testing %s/%s provider=%d relay=%s", idx+1, len(selected), city.CountryCode, city.CityCode, city.Provider, city.RelayName)
