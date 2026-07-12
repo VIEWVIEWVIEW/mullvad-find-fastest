@@ -24,7 +24,7 @@ The recommended launcher is:
 .\Start-MullvadBenchmark.ps1 -MaxPing 80 -Exclude us,se-mma
 ```
 
-It runs both phases sequentially and only starts the benchmark if the ping phase succeeds.
+It runs both phases sequentially only when `-MaxPing` is provided; if omitted, it skips the ping phase and runs speed tests directly.
 
 If you want to run manually, with custom options, you can run both programs sequentially. The benchmark phase starts only if the ping phase succeeds:
 
@@ -41,7 +41,7 @@ if ($LASTEXITCODE -eq 0) {
 }
 ```
 
-To skip the ping step and jump directly to VPN speed tests, use `-SkipPing`:
+To skip the ping step explicitly, use `-SkipPing`:
 
 ```powershell
 .\Start-MullvadBenchmark.ps1 -SkipPing -Exclude us -Exclude se-mma

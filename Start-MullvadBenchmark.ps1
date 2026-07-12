@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
-    [int]$MaxPing = 80,
+    [int]$MaxPing = $null,
     [string[]]$Exclude = @(),
     [switch]$SkipPing,
-    [string]$PingOutput = "",
+    [string]$PingOutput = "mullvad-ping-results.json",
     [string]$BenchmarkOutput = "benchmark.json"
 )
 
@@ -15,17 +15,15 @@ $BenchmarkBinary = Join-Path $Root "mullvad-benchmark.exe"
 if (-not (Test-Path -LiteralPath $BenchmarkBinary)) {
     throw "Missing $BenchmarkBinary. Build mullvad-benchmark.exe first."
 }
-if (-not $SkipPing -and -not [string]::IsNullOrWhiteSpace($PingOutput) -and -not (Test-Path -LiteralPath $PingBinary)) {
-    throw "Missing $PingBinary. Build mullvad-ping.exe first."
-}
 
-if ([string]::IsNullOrWhiteSpace($PingOutput)) {
-    $SkipPing = $true
+$NeedPing = (-not $SkipPing) -and ($null -ne $MaxPing)
+if ($NeedPing -and -not (Test-Path -LiteralPath $PingBinary)) {
+    throw "Missing $PingBinary. Build mullvad-ping.exe first."
 }
 
 Push-Location $Root
 try {
-    if (-not $SkipPing) {
+    if ($NeedPing) {
         & $PingBinary --output $PingOutput
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
@@ -35,7 +33,7 @@ try {
     $BenchmarkArgs = @(
         "--output", $BenchmarkOutput
     )
-    if ($SkipPing) {
+    if (-not $NeedPing) {
         $BenchmarkArgs += "--skip-ping"
     } else {
         $BenchmarkArgs += @(
