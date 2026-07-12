@@ -1,4 +1,4 @@
-# Müllvatt find fastest
+# Mullvad find fastest
 
 Two Windows Go binaries for finding Mullvad city providers with good latency and throughput.
 
