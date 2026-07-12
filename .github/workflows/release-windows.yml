@@ -1,0 +1,76 @@
+name: Release Windows Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (for manual runs)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RELEASE_TAG="${{ github.event.inputs.tag }}"
+          else
+            RELEASE_TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/mullvad-ping.exe ./cmd/mullvad-ping
+          GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/mullvad-benchmark.exe ./cmd/mullvad-benchmark
+
+      - name: Generate changelog
+        shell: bash
+        run: |
+          RELEASE_TAG="${{ steps.release.outputs.tag }}"
+          PREVIOUS_TAG="$(git tag --sort=-creatordate | sed -n '1p')"
+          if [[ "${PREVIOUS_TAG}" == "${RELEASE_TAG}" ]]; then
+            PREVIOUS_TAG="$(git tag --sort=-creatordate | sed -n '2p')"
+          fi
+          {
+            echo "# Release ${RELEASE_TAG}"
+            echo ""
+            echo "## Changelog"
+            if [[ -z "${PREVIOUS_TAG}" ]]; then
+              git log --no-merges --pretty='- %h %s (%an)' --max-count=120
+            else
+              git log --no-merges --pretty='- %h %s (%an)' "${PREVIOUS_TAG}..${RELEASE_TAG}"
+            fi
+          } > release-notes.md
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: "Müllvatt find fastest ${{ steps.release.outputs.tag }}"
+          body_path: release-notes.md
+          files: |
+            dist/mullvad-ping.exe
+            dist/mullvad-benchmark.exe
