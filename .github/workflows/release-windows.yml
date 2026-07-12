@@ -2,13 +2,13 @@ name: Release Windows Binaries
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       tag:
         description: Release tag (for manual runs)
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -32,12 +32,24 @@ jobs:
         id: release
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.tag }}" ]]; then
             RELEASE_TAG="${{ github.event.inputs.tag }}"
           else
-            RELEASE_TAG="${{ github.ref_name }}"
+            RELEASE_TAG="v$(git rev-parse --short=12 "${{ github.sha }}")"
           fi
           echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create and push tag
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == '' }}
+        shell: bash
+        run: |
+          RELEASE_TAG="${{ steps.release.outputs.tag }}"
+          if git rev-parse "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${RELEASE_TAG} already exists, skipping tag creation."
+            exit 0
+          fi
+          git tag "${RELEASE_TAG}"
+          git push origin "${RELEASE_TAG}"
 
       - name: Build binaries
         shell: bash
