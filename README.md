@@ -9,6 +9,7 @@ Tools to benchmark Mullvad relays, show results by city + provider bucket, and b
 go build -o mullvad-ping.exe ./cmd/mullvad-ping
 go build -o mullvad-benchmark.exe ./cmd/mullvad-benchmark
 go build -o mullvad-list-builder.exe ./cmd/mullvad-list-builder
+go build -o mullvad-proxy-benchmark.exe ./cmd/mullvad-proxy-benchmark
 
 # 2) Run recommended pipeline (ping first, then benchmark)
 # Start-MullvadBenchmark.ps1 defaults -BenchmarkOutput to benchmark.json.
@@ -25,6 +26,36 @@ To add the selected rows to an actual Mullvad custom list in the client, run:
 ```
 
 ## Requirements
+
+## Quick Proxy Benchmark workflow
+
+Build and run proxy tests directly:
+
+```powershell
+# Build the proxy benchmark tool
+go build -o mullvad-proxy-benchmark.exe ./cmd/mullvad-proxy-benchmark
+
+# 1) Test all discovered Mullvad relays (default behavior).
+#    This benchmarks socks5://<ipv4>:1080 and http://<ipv4>:80 for each relay via VPN.
+./mullvad-proxy-benchmark.exe --timeout 45s
+
+# 2) Test explicit proxies only (skip automatic Mullvad relay discovery).
+./mullvad-proxy-benchmark.exe --proxy "socks5://127.0.0.1:1080" --proxy "http://127.0.0.1:3128" --timeout 30s
+
+# 3) Test all discovered Mullvad relays with a different timeout.
+./mullvad-proxy-benchmark.exe --timeout 30s
+```
+
+Output files:
+
+- `proxy-benchmark-results.json`
+- `proxy-benchmark-results.json.csv`
+
+Example table view from CSV:
+
+```powershell
+Import-Csv .\proxy-benchmark-results.json.csv | Sort-Object download_mbps -Descending | Format-Table -AutoSize
+```
 
 - Windows 10/11
 - Go 1.26+ (for building binaries)
@@ -168,6 +199,48 @@ If `--name` is omitted, you are prompted for it.
 - Q: quit without changes
 
 Each row represents a city+provider bucket (for example `000-099`, `100-199`) and adds all relay hostnames for that bucket into the chosen Mullvad custom list.
+
+### `mullvad-proxy-benchmark.exe`
+
+Use this utility to benchmark proxy endpoints directly (HTTP and SOCKS5), useful when comparing local/private relay performance.
+
+### Usage
+
+- Default mode (tests full relay list):
+
+```powershell
+./mullvad-proxy-benchmark.exe --timeout 45s
+```
+
+- Test explicit proxies only:
+
+```powershell
+./mullvad-proxy-benchmark.exe --proxy "socks5://127.0.0.1:1080" --proxy "http://127.0.0.1:3128" --timeout 45s
+```
+
+#### Flags
+
+- `--proxy <url>`: repeatable list of proxy URLs to test. Supported schemes: `http`, `https`, `socks5`, `socks5h`.
+  If omitted, this defaults to testing the full Mullvad relay list: each relay is tested as SOCKS5 (`socks5://<ipv4>:1080`) and HTTP (`http://<ipv4>:80`).
+- `--base-url <url>`: base URL for speed tests (default: `https://speed.cloudflare.com`).
+- `--timeout <duration>`: request timeout for proxy tests (default: `30s`).
+- `--output <path>`: JSON output path (default: `proxy-benchmark-results.json`).
+
+### Example output
+
+Example successful row:
+
+| Idx | Protocol | Proxy | Status | Latency | Download (Mbps) | Upload (Mbps) | Error |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | socks5 | socks5://91.101.0.1:1080 | OK | 18 ms | 120.4 | 38.2 | |
+| 2 | http | http://91.101.0.1:80 | FAILED | - | - | - | context deadline exceeded |
+
+Each row is one proxy endpoint. `Status=OK` means the endpoint was reachable and speed test completed.
+
+Output files:
+
+- `proxy-benchmark-results.json` (JSON)
+- `proxy-benchmark-results.json.csv` (CSV)
 
 ## Notes
 
