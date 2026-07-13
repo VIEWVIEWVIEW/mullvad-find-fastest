@@ -3,12 +3,16 @@ package bench
 import "time"
 
 type Relay struct {
-	CountryCode string `json:"country_code"`
-	Country     string `json:"country"`
-	CityCode    string `json:"city_code"`
-	City        string `json:"city"`
-	Name        string `json:"name"`
-	IPv4        string `json:"ipv4"`
+	CountryCode    string `json:"country_code"`
+	Country        string `json:"country"`
+	CityCode       string `json:"city_code"`
+	City           string `json:"city"`
+	Name           string `json:"name"`
+	IPv4           string `json:"ipv4"`
+	Provider       int    `json:"provider"`
+	ProviderHost   string `json:"provider_host"`
+	ProviderStatus string `json:"provider_status"`
+	ProviderSpeed  string `json:"provider_speed"`
 }
 
 type RelayPing struct {
@@ -47,20 +51,26 @@ type SpeedResult struct {
 }
 
 type CityResult struct {
-	CountryCode string       `json:"country_code"`
-	Country     string       `json:"country"`
-	CityCode    string       `json:"city_code"`
-	City        string       `json:"city"`
-	Provider    int          `json:"provider"`
-	RelayName   string       `json:"relay_name"`
-	RelayCount  int          `json:"relay_count"`
-	Reachable   int          `json:"reachable_relays"`
-	LocalErrors int          `json:"local_errors"`
-	NoReply     int          `json:"no_reply"`
-	PrePingMS   float64      `json:"pre_ping_ms"`
-	Speed       *SpeedResult `json:"speed,omitempty"`
-	Status      string       `json:"status"`
-	Error       string       `json:"error,omitempty"`
+	CountryCode    string       `json:"country_code"`
+	Country        string       `json:"country"`
+	CityCode       string       `json:"city_code"`
+	City           string       `json:"city"`
+	Provider       int          `json:"provider"`
+	ProviderRange  string       `json:"provider_range"`
+	ProviderHost   string       `json:"provider_host"`
+	ProviderStatus string       `json:"provider_status"`
+	ProviderSpeed  string       `json:"provider_speed"`
+	RelayIP        string       `json:"relay_ip"`
+	RelayHostname  string       `json:"relay_hostname"`
+	RelayName      string       `json:"relay_name"`
+	RelayCount     int          `json:"relay_count"`
+	Reachable      int          `json:"reachable_relays"`
+	LocalErrors    int          `json:"local_errors"`
+	NoReply        int          `json:"no_reply"`
+	PrePingMS      float64      `json:"pre_ping_ms"`
+	Speed          *SpeedResult `json:"speed,omitempty"`
+	Status         string       `json:"status"`
+	Error          string       `json:"error,omitempty"`
 }
 
 type BenchmarkFile struct {

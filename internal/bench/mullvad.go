@@ -36,10 +36,48 @@ func (m Mullvad) AddSplitApp(ctx context.Context, path string) error {
 	_, err := m.Run(ctx, "split-tunnel", "app", "add", path)
 	return err
 }
+
 func (m Mullvad) RemoveSplitApp(ctx context.Context, path string) error {
 	_, err := m.Run(ctx, "split-tunnel", "app", "remove", path)
 	return err
 }
+
+func (m Mullvad) ListCustomLists(ctx context.Context) ([]string, error) {
+	out, err := m.Run(ctx, "custom-list", "list")
+	if err != nil {
+		return nil, err
+	}
+	return ParseCustomListNames(out), nil
+}
+
+func (m Mullvad) CustomListExists(ctx context.Context, name string) (bool, error) {
+	lists, err := m.ListCustomLists(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, existing := range lists {
+		if strings.EqualFold(existing, name) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m Mullvad) CreateCustomList(ctx context.Context, name string) error {
+	_, err := m.Run(ctx, "custom-list", "new", name)
+	return err
+}
+
+func (m Mullvad) DeleteCustomList(ctx context.Context, name string) error {
+	_, err := m.Run(ctx, "custom-list", "delete", name)
+	return err
+}
+
+func (m Mullvad) AddRelayToCustomList(ctx context.Context, listName, country, city, hostname string) error {
+	_, err := m.Run(ctx, "custom-list", "edit", "add", listName, country, city, hostname)
+	return err
+}
+
 func (m Mullvad) SetLocation(ctx context.Context, country, city string, relayHost ...string) error {
 	args := []string{"relay", "set", "location", country, city}
 	if len(relayHost) > 0 && relayHost[0] != "" {
@@ -73,6 +111,24 @@ func (m Mullvad) SetMultihop(ctx context.Context, enabled bool) error {
 var relayLocationRE = regexp.MustCompile(`(?m)Relay:\s+([a-z]{2})-([a-z0-9]{3})-`)
 var relayIdentityRE = regexp.MustCompile(`(?m)Relay:\s+([a-z]{2}-[a-z0-9]{3}-[^\s]+)\b`)
 var relayMultihopStateRE = regexp.MustCompile(`(?m)^\s*Multihop state:\s+([A-Za-z]+)\s*$`)
+
+func ParseCustomListNames(text string) []string {
+	var names []string
+	for _, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		line := strings.TrimRight(raw, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "\t") || strings.HasPrefix(line, " ") {
+			continue
+		}
+		if strings.Contains(line, ",") && strings.Contains(line, "(") && strings.Contains(line, ")") {
+			continue
+		}
+		names = append(names, strings.TrimSpace(line))
+	}
+	return names
+}
 
 func ParseLocation(status string) (country, city string, ok bool) {
 	m := relayLocationRE.FindStringSubmatch(status)

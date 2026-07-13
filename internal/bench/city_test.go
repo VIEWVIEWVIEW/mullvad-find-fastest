@@ -4,9 +4,9 @@ import "testing"
 
 func TestCitiesByProvider(t *testing.T) {
 	cs := Cities([]RelayPing{
-		{Relay: Relay{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-001"}, MedianMS: 30, Status: "ok"},
-		{Relay: Relay{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-099"}, MedianMS: 25, Status: "ok"},
-		{Relay: Relay{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-101"}, MedianMS: 40, Status: "ok"},
+		{Relay: Relay{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-001", IPv4: "185.1.1.1", ProviderHost: "M247", ProviderStatus: "rented", ProviderSpeed: "10 Gbps"}, MedianMS: 30, Status: "ok"},
+		{Relay: Relay{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-099", IPv4: "185.1.1.2", ProviderHost: "M247", ProviderStatus: "rented", ProviderSpeed: "2.5 Gbps"}, MedianMS: 25, Status: "ok"},
+		{Relay: Relay{CountryCode: "de", CityCode: "par", Country: "Germany", City: "Paris", Name: "de-par-wg-101", IPv4: "185.1.1.3", ProviderHost: "Leaseweb", ProviderSpeed: "20 Gbps"}, MedianMS: 40, Status: "ok"},
 	})
 	if len(cs) != 2 {
 		t.Fatalf("expected 2 providers, got %d", len(cs))
@@ -26,6 +26,33 @@ func TestCitiesByProvider(t *testing.T) {
 	}
 	if p2.RelayName != "de-par-wg-101" || p2.PrePingMS != 40 {
 		t.Fatalf("unexpected provider2 bucket %#v", p2)
+	}
+	if p1.ProviderRange != "000-099" {
+		t.Fatalf("expected provider range 000-099, got %q", p1.ProviderRange)
+	}
+	if p1.ProviderHost != "M247" {
+		t.Fatalf("expected provider host M247, got %q", p1.ProviderHost)
+	}
+	if p1.ProviderStatus != "rented" {
+		t.Fatalf("expected provider status rented, got %q", p1.ProviderStatus)
+	}
+	if p1.ProviderSpeed != "2.5 Gbps" {
+		t.Fatalf("expected provider speed 2.5 Gbps, got %q", p1.ProviderSpeed)
+	}
+	if p2.ProviderRange != "100-199" {
+		t.Fatalf("expected provider range 100-199, got %q", p2.ProviderRange)
+	}
+	if p2.ProviderHost != "Leaseweb" {
+		t.Fatalf("expected provider host Leaseweb, got %q", p2.ProviderHost)
+	}
+	if p2.ProviderSpeed != "20 Gbps" {
+		t.Fatalf("expected provider speed 20 Gbps, got %q", p2.ProviderSpeed)
+	}
+	if p1.RelayIP != "185.1.1.2" {
+		t.Fatalf("expected relay ip 185.1.1.2, got %q", p1.RelayIP)
+	}
+	if p2.RelayIP != "185.1.1.3" {
+		t.Fatalf("expected relay ip 185.1.1.3, got %q", p2.RelayIP)
 	}
 	if !Excluded(p1, []string{"de-par", "de-par-1", "de-par-wg-099", "de-par-wg-001"}) {
 		t.Fatal("expected provider exclusion to match")

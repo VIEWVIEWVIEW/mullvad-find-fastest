@@ -33,9 +33,11 @@ func Cities(relays []RelayPing) []CityResult {
 		localErrors := 0
 		noReply := 0
 		relayName := ""
+		bestRelay := RelayPing{}
 		for _, r := range rs {
 			if relayName == "" {
 				relayName = r.Name
+				bestRelay = r
 			}
 			if r.MedianMS > 0 {
 				reachable++
@@ -43,22 +45,28 @@ func Cities(relays []RelayPing) []CityResult {
 			if r.MedianMS > 0 && (best == 0 || r.MedianMS < best) {
 				best = r.MedianMS
 				relayName = r.Name
+				bestRelay = r
 			}
 			localErrors += r.LocalErrors
 			noReply += r.NoReply
 		}
 		result = append(result, CityResult{
-			CountryCode: rs[0].CountryCode,
-			Country:     rs[0].Country,
-			CityCode:    rs[0].CityCode,
-			City:        rs[0].City,
-			Provider:    k.Provider,
-			RelayName:   relayName,
-			RelayCount:  len(rs),
-			Reachable:   reachable,
-			LocalErrors: localErrors,
-			NoReply:     noReply,
-			PrePingMS:   best,
+			CountryCode:    rs[0].CountryCode,
+			Country:        rs[0].Country,
+			CityCode:       rs[0].CityCode,
+			City:           rs[0].City,
+			Provider:       k.Provider,
+			ProviderRange:  providerRangeFromID(k.Provider),
+			ProviderHost:   bestRelay.ProviderHost,
+			ProviderStatus: bestRelay.ProviderStatus,
+			ProviderSpeed:  bestRelay.ProviderSpeed,
+			RelayIP:        bestRelay.IPv4,
+			RelayName:      relayName,
+			RelayCount:     len(rs),
+			Reachable:      reachable,
+			LocalErrors:    localErrors,
+			NoReply:        noReply,
+			PrePingMS:      best,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].PrePingMS < result[j].PrePingMS })
@@ -121,6 +129,13 @@ func parseProviderFilter(value string) (int, bool) {
 
 func providerFromCode(code int) int {
 	return (code / 100) + 1
+}
+
+func providerRangeFromID(provider int) string {
+	if provider <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%03d-%03d", (provider-1)*100, ((provider-1)*100)+99)
 }
 
 func (c CityResult) ProviderCode() string {

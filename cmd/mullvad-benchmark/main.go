@@ -7,12 +7,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/example/mullvad-benchmark/internal/bench"
@@ -100,7 +102,15 @@ func main() {
 	defer restore(wasConnected, originalCountry, originalCity, originalRelay, hasOriginalLocation, m)
 	results := make([]bench.CityResult, 0, len(selected))
 	for idx, city := range selected {
-		logf("[%d/%d] testing %s/%s provider=%d relay=%s", idx+1, len(selected), city.CountryCode, city.CityCode, city.Provider, city.RelayName)
+		providerLabel := city.ProviderRange
+		if providerLabel == "" {
+			providerLabel = "-"
+		}
+		speedLabel := city.ProviderSpeed
+		if speedLabel == "" {
+			speedLabel = "-"
+		}
+		logf("[%d/%d] testing %s/%s provider=%s relay=%s speed=%s", idx+1, len(selected), city.CountryCode, city.CityCode, providerLabel, city.RelayName, speedLabel)
 		city.Status = "FAILED"
 		if ctx.Err() != nil {
 			logf("[%d/%d] interrupted before test start; stopping", idx+1, len(selected))
@@ -113,6 +123,9 @@ func main() {
 		}
 		if err == nil {
 			err = bench.WaitConnected(ctx, m, *connectTimeout)
+		}
+		if err == nil {
+			city.RelayHostname = lookupRelayHostname(city.RelayIP)
 		}
 		if err == nil {
 			logf("[%d/%d] running speed test", idx+1, len(selected))
@@ -141,10 +154,7 @@ func main() {
 		}
 		return results[i].Speed.DownloadMB > results[j].Speed.DownloadMB
 	})
-	fmt.Printf("%-5s %-8s %-18s %-9s %-10s %-9s %-12s %-11s %-9s %s\n", "Rank", "Country", "City", "Provider", "Relays", "Pre-ping", "VPN latency", "Download", "Upload", "Status")
-	for i, city := range results {
-		printRow(i+1, city)
-	}
+	printTable(results)
 	if *output != "" {
 		out := bench.BenchmarkFile{Version: 1, RunID: fmt.Sprintf("%d", time.Now().UnixNano()), CreatedAt: time.Now().UTC(), InputRun: inputRun, Results: results}
 		if err := bench.WriteJSONAtomic(*output, out); err != nil {
@@ -161,11 +171,37 @@ func (m *multiFlag) Set(v string) error {
 	*m = append(*m, strings.ToLower(strings.TrimSpace(v)))
 	return nil
 }
-func printRow(rank int, c bench.CityResult) {
+func printTable(results []bench.CityResult) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	defer w.Flush()
+
+	_, _ = fmt.Fprintln(w, "Rank\tCountry\tCity\tProviders\tHost\tStatus\tListed speed\tRelay\trelay_hostname\tRelays\tPre-ping\tVPN latency\tDownload\tUpload\tStatus")
+	for i, city := range results {
+		printRow(w, i+1, city)
+	}
+}
+
+func printRow(w io.Writer, rank int, c bench.CityResult) {
 	lat, down, up := "-", "-", "-"
-	provider := "-"
-	if c.Provider > 0 {
-		provider = strconv.Itoa(c.Provider)
+	providerRange := "-"
+	providerHost := "-"
+	providerStatus := "-"
+	providerSpeed := "-"
+	relayHostname := "-"
+	if c.ProviderRange != "" {
+		providerRange = c.ProviderRange
+	}
+	if c.ProviderHost != "" {
+		providerHost = c.ProviderHost
+	}
+	if c.ProviderStatus != "" {
+		providerStatus = c.ProviderStatus
+	}
+	if c.ProviderSpeed != "" {
+		providerSpeed = c.ProviderSpeed
+	}
+	if c.RelayHostname != "" {
+		relayHostname = c.RelayHostname
 	}
 	prePing := "-"
 	if c.PrePingMS > 0 {
@@ -176,7 +212,8 @@ func printRow(rank int, c bench.CityResult) {
 		down = fmt.Sprintf("%.1f", c.Speed.DownloadMB)
 		up = fmt.Sprintf("%.1f", c.Speed.UploadMB)
 	}
-	fmt.Printf("%-5d %-8s %-18s %-9s %-10s %-9s %-12s %-11s %-9s %s\n", rank, c.CountryCode, c.City, provider, fmt.Sprintf("%d/%d", c.Reachable, c.RelayCount), prePing, lat, down, up, c.Status)
+	_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		rank, c.CountryCode, c.City, providerRange, providerHost, providerStatus, providerSpeed, c.RelayName, relayHostname, fmt.Sprintf("%d/%d", c.Reachable, c.RelayCount), prePing, lat, down, up, c.Status)
 }
 func logf(format string, args ...any) {
 	prefix := time.Now().Format("15:04:05.000")
@@ -226,7 +263,7 @@ func writeCSV(path string, rows []bench.CityResult) {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	_ = w.Write([]string{"country", "city", "provider", "relay", "relays", "pre_ping_ms", "latency_ms", "download_mbps", "upload_mbps", "status", "error"})
+	_ = w.Write([]string{"country", "city", "provider", "provider_range", "provider_host", "provider_status", "provider_speed", "relay", "relay_hostname", "relays", "pre_ping_ms", "latency_ms", "download_mbps", "upload_mbps", "status", "error"})
 	for _, r := range rows {
 		lat, down, up := "", "", ""
 		if r.Speed != nil {
@@ -234,8 +271,42 @@ func writeCSV(path string, rows []bench.CityResult) {
 			down = fmt.Sprintf("%.2f", r.Speed.DownloadMB)
 			up = fmt.Sprintf("%.2f", r.Speed.UploadMB)
 		}
-		_ = w.Write([]string{r.CountryCode, r.City, fmt.Sprint(r.Provider), r.RelayName, fmt.Sprintf("%d/%d", r.Reachable, r.RelayCount), fmt.Sprintf("%.2f", r.PrePingMS), lat, down, up, r.Status, r.Error})
+		_ = w.Write([]string{
+			r.CountryCode,
+			r.City,
+			fmt.Sprint(r.Provider),
+			r.ProviderRange,
+			r.ProviderHost,
+			r.ProviderStatus,
+			r.ProviderSpeed,
+			r.RelayName,
+			r.RelayHostname,
+			fmt.Sprintf("%d/%d", r.Reachable, r.RelayCount),
+			fmt.Sprintf("%.2f", r.PrePingMS),
+			lat,
+			down,
+			up,
+			r.Status,
+			r.Error,
+		})
 	}
 	w.Flush()
 }
+
+func lookupRelayHostname(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	names, err := net.DefaultResolver.LookupAddr(ctx, ip)
+	if err != nil || len(names) == 0 {
+		return ""
+	}
+	return strings.TrimSuffix(names[0], ".")
+}
+
 func fatal(err error) { fmt.Fprintln(os.Stderr, "error:", err); os.Exit(1) }

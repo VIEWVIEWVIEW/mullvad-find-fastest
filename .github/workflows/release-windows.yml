@@ -57,12 +57,13 @@ jobs:
           mkdir -p dist
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/mullvad-ping.exe ./cmd/mullvad-ping
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/mullvad-benchmark.exe ./cmd/mullvad-benchmark
+          GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o dist/mullvad-list-builder.exe ./cmd/mullvad-list-builder
 
       - name: Package release bundle
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path "dist/mullvad-ping.exe","dist/mullvad-benchmark.exe","${{ github.workspace }}\\Start-MullvadBenchmark.ps1" `
+            -Path "dist/mullvad-ping.exe","dist/mullvad-benchmark.exe","dist/mullvad-list-builder.exe","${{ github.workspace }}\\Start-MullvadBenchmark.ps1" `
             -DestinationPath "dist/mullvad-find-fastest-windows-amd64.zip" `
             -Force
 

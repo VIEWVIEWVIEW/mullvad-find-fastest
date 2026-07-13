@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	countryRE = regexp.MustCompile(`^(.+) \(([a-z]{2})\)$`)
-	cityRE    = regexp.MustCompile(`^(.+) \(([a-z0-9]{3})\) @`)
-	relayRE   = regexp.MustCompile(`^([a-z]{2})-([a-z0-9]{3})-[^ ]+ \(([^, )]+)(?:, [^)]*)?\)`)
+	countryRE           = regexp.MustCompile(`^(.+) \(([a-z]{2})\)$`)
+	cityRE              = regexp.MustCompile(`^(.+) \(([a-z0-9]{3})\) @`)
+	relayRE             = regexp.MustCompile(`^([a-z]{2})-([a-z0-9]{3})-[^ ]+ \(([^, )]+)(?:, [^)]*)?\)`)
+	relayProviderInfoRE = regexp.MustCompile(`- hosted by (.+?) \(([^)]+)\)(?:,\s*(.+?))?\s*$`)
 )
 
 func ParseRelayList(text string) ([]Relay, error) {
@@ -31,7 +32,19 @@ func ParseRelayList(text string) ([]Relay, error) {
 			continue
 		}
 		if m := relayRE.FindStringSubmatch(line); m != nil && countryCode != "" && cityCode != "" {
-			relays = append(relays, Relay{CountryCode: countryCode, Country: country, CityCode: cityCode, City: city, Name: strings.Split(line, " ")[0], IPv4: m[3]})
+			hostName, hostStatus, hostSpeed := parseRelayProviderInfo(line)
+			relays = append(relays, Relay{
+				CountryCode:    countryCode,
+				Country:        country,
+				CityCode:       cityCode,
+				City:           city,
+				Name:           strings.Split(line, " ")[0],
+				IPv4:           m[3],
+				Provider:       ParseProvider(strings.Split(line, " ")[0]),
+				ProviderHost:   hostName,
+				ProviderStatus: hostStatus,
+				ProviderSpeed:  hostSpeed,
+			})
 		}
 	}
 	if len(relays) == 0 {
@@ -39,4 +52,12 @@ func ParseRelayList(text string) ([]Relay, error) {
 	}
 	sort.Slice(relays, func(i, j int) bool { return relays[i].Name < relays[j].Name })
 	return relays, nil
+}
+
+func parseRelayProviderInfo(line string) (host string, status string, speed string) {
+	m := relayProviderInfoRE.FindStringSubmatch(line)
+	if len(m) != 4 {
+		return "", "", ""
+	}
+	return strings.TrimSpace(m[1]), strings.ToLower(strings.TrimSpace(m[2])), strings.TrimSpace(m[3])
 }

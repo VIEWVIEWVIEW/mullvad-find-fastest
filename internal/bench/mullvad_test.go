@@ -34,3 +34,19 @@ func TestParseRelayMultihopState(t *testing.T) {
 		t.Fatal("expected multihop disabled")
 	}
 }
+
+func TestParseCustomListNames(t *testing.T) {
+	raw := `fast
+	Brussels, Belgium (bru, be)
+	Berlin, Germany (ber, de)
+my list
+	Paris, France (par, fr)
+`
+	names := ParseCustomListNames(raw)
+	if len(names) != 2 {
+		t.Fatalf("expected 2 list names, got %d (%#v)", len(names), names)
+	}
+	if names[0] != "fast" || names[1] != "my list" {
+		t.Fatalf("unexpected list names: %#v", names)
+	}
+}

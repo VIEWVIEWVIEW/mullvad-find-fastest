@@ -4,3 +4,6 @@ benchmark.json.csv
 benchmark-*.json
 benchmark-*.json.csv
 mullvad-ping-results.json
+mullvad-*.exe
+.gocache/
+.gomodcache/
