@@ -52,14 +52,14 @@ func enableRawMode() (func(), error) {
 		return nil, err
 	}
 	var mode uint32
-	if _, _, err := procGetConsoleMode.Call(uintptr(stdin), uintptr(unsafe.Pointer(&mode))); err != nil {
+	if _, _, err := procGetConsoleMode.Call(uintptr(stdin), uintptr(unsafe.Pointer(&mode))); err != nil && err != syscall.Errno(0) {
 		return nil, err
 	}
 
 	raw := mode &
 		^uint32(enableLineInput|enableEchoInput|enableProcessedInput)
 	raw |= uint32(enableWindowInput | enableMouseInput | enableExtendedFlags | enableVirtualInput)
-	if _, _, err := procSetConsoleMode.Call(uintptr(stdin), uintptr(raw)); err != nil {
+	if _, _, err := procSetConsoleMode.Call(uintptr(stdin), uintptr(raw)); err != nil && err != syscall.Errno(0) {
 		return nil, err
 	}
 
