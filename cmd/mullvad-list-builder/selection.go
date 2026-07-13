@@ -110,6 +110,7 @@ func runInteractiveSelector(rows []selectionRow) ([]int, error) {
 				state.selected[state.cursor] = struct{}{}
 			}
 		case keyEnter:
+			cleanupSelectionTerminal()
 			return orderedSelection(state.selected), nil
 		}
 

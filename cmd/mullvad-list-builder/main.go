@@ -112,6 +112,7 @@ func main() {
 	if failed > 0 {
 		fmt.Printf("Failed to add %d relays. See mullvad CLI errors above.\n", failed)
 	}
+	os.Exit(0)
 }
 
 func resolveBenchmarkInput(path string) (string, error) {
@@ -333,6 +334,7 @@ func applySelection(ctx context.Context, m bench.Mullvad, listName string, rows 
 				fmt.Fprintf(os.Stderr, "failed adding %s to %s: %v\n", relay, listName, err)
 				continue
 			}
+			fmt.Printf("Added relay %s (%s/%s) to %q\n", relay, row.countryCode, row.cityCode, listName)
 			added++
 		}
 	}
