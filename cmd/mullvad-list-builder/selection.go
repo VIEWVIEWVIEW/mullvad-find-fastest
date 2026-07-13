@@ -5,11 +5,46 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 )
 
 const listHeaderLines = 6
+const (
+	colCursorWidth     = 2
+	colIdxWidth        = 4
+	colSelWidth       = 3
+	colCountryWidth   = 8
+	colCityWidth      = 6
+	colProviderWidth  = 12
+	colHostWidth      = 18
+	colStatusWidth    = 10
+	colSpeedWidth     = 7
+	colRelaysWidth    = 6
+	colPrePingWidth   = 9
+	colLatencyWidth   = 9
+	colDownloadWidth  = 9
+	colUploadWidth    = 8
+	colLocationWidth  = 36
+)
+
+var colAlignRight = map[int]bool{
+	0:  false, // cursor
+	1:  true,  // idx
+	2:  false, // sel
+	3:  false, // country
+	4:  false, // city
+	5:  false, // provider
+	6:  false, // host
+	7:  false, // status
+	8:  true,  // speed
+	9:  true,  // relays
+	10: true,  // pre ping
+	11: true,  // latency
+	12: true,  // download
+	13: true,  // upload
+	14: false, // location
+}
 
 func promptForSelection(rows []selectionRow) ([]int, error) {
 	selected, err := runInteractiveSelector(rows)
@@ -169,10 +204,6 @@ func renderRowAt(state selectorState, rowIndex int, windowRows int) {
 }
 
 func formatRowLine(index int, row selectionRow, cursor int, selected map[int]struct{}) string {
-	var b strings.Builder
-	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	defer w.Flush()
-
 	cursorMark := " "
 	if index == cursor {
 		cursorMark = ">"
@@ -194,9 +225,9 @@ func formatRowLine(index int, row selectionRow, cursor int, selected map[int]str
 		location = fmt.Sprintf("%s (%s)", row.cityName, row.countryName)
 	}
 
-		_, _ = fmt.Fprintf(w, "%s%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+	return renderTableLine(
 		cursorMark,
-		index+1,
+		strconv.Itoa(index+1),
 		checkMark,
 		strings.ToUpper(row.countryCode),
 		row.cityCode,
@@ -211,18 +242,63 @@ func formatRowLine(index int, row selectionRow, cursor int, selected map[int]str
 		upload,
 		location,
 	)
-	_ = w.Flush()
-	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func headerRowLine() string {
+	return renderTableLine(" ", "Idx", "Sel", "Country", "City", "Provider", "Host", "Status", "Speed", "Relays", "Pre ping", "Latency", "Download", "Upload", "Location")
+}
+
+func renderTableLine(fields ...string) string {
+	widths := []int{
+		colCursorWidth,
+		colIdxWidth,
+		colSelWidth,
+		colCountryWidth,
+		colCityWidth,
+		colProviderWidth,
+		colHostWidth,
+		colStatusWidth,
+		colSpeedWidth,
+		colRelaysWidth,
+		colPrePingWidth,
+		colLatencyWidth,
+		colDownloadWidth,
+		colUploadWidth,
+		colLocationWidth,
+	}
+
 	var b strings.Builder
-	header := "Idx\tSel\tCountry\tCity\tProvider\tHost\tStatus\tSpeed\tRelays\tPre ping\tLatency\tDownload\tUpload\tLocation"
-	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	defer w.Flush()
-	_, _ = fmt.Fprintln(w, header)
-	_ = w.Flush()
-	return strings.TrimSuffix(b.String(), "\n")
+	for i, field := range fields {
+		width := colCountryWidth
+		if i < len(widths) {
+			width = widths[i]
+		}
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(formatField(field, width, colAlignRight[i]))
+	}
+	return b.String()
+}
+
+func formatField(value string, width int, alignRight bool) string {
+	if width <= 0 {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) > width {
+		if width == 1 {
+			return value[:1]
+		}
+		if width > 1 {
+			runes = runes[:width-1]
+			value = string(runes) + "…"
+		}
+	}
+	if alignRight {
+		return fmt.Sprintf("%*s", width, value)
+	}
+	return fmt.Sprintf("%-*s", width, value)
 }
 
 func updateOffset(state *selectorState) {
