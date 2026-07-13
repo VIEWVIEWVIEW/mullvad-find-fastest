@@ -48,6 +48,11 @@ go build -o mullvad-benchmark.exe ./cmd/mullvad-benchmark
 go build -o mullvad-list-builder.exe ./cmd/mullvad-list-builder
 ```
 
+## Prebuilt binaries
+
+If you don’t want to build locally, download prebuilt executables from the
+[GitHub Releases page](https://github.com/VIEWVIEWVIEW/mullvad-find-fastest/releases).
+
 ## Run with Start-MullvadBenchmark.ps1 (recommended)
 
 `Start-MullvadBenchmark.ps1` does one of two things:
