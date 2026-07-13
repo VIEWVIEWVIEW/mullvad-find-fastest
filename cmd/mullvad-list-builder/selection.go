@@ -9,7 +9,7 @@ import (
 	"text/tabwriter"
 )
 
-const listHeaderLines = 5
+const listHeaderLines = 6
 
 func promptForSelection(rows []selectionRow) ([]int, error) {
 	selected, err := runInteractiveSelector(rows)
@@ -35,13 +35,24 @@ func runInteractiveSelector(rows []selectionRow) ([]int, error) {
 		return nil, nil
 	}
 
+	fmt.Print("\x1b[?25l")
+	defer fmt.Print("\x1b[?25h")
+
+	windowRows := maxInt(terminalListRows(), 1)
+	prevWindowRows := windowRows
+	renderHeader(state)
+	prevWindowRows = renderViewport(state, windowRows, prevWindowRows)
+
 	for {
-		updateOffset(&state)
-		renderState(state)
+		prevCursor := state.cursor
+		prevOffset := state.offset
+		prevSelectedCount := len(state.selected)
+
 		key, err := readKey(reader)
 		if err != nil {
 			return nil, err
 		}
+
 		switch key {
 		case keyQuit, keyCtrlC:
 			return nil, errSelectionCancelled
@@ -66,6 +77,28 @@ func runInteractiveSelector(rows []selectionRow) ([]int, error) {
 		case keyEnter:
 			return orderedSelection(state.selected), nil
 		}
+
+		updateOffset(&state)
+
+		windowRows = maxInt(terminalListRows(), 1)
+		selectionChanged := len(state.selected) != prevSelectedCount
+		cursorMoved := state.cursor != prevCursor
+		offsetChanged := state.offset != prevOffset
+		headerNeedsUpdate := selectionChanged || cursorMoved || offsetChanged
+		viewportChanged := offsetChanged || (windowRows != prevWindowRows)
+
+		if cursorMoved && !viewportChanged {
+			// Update only the two rows involved in the cursor move.
+			renderRowAt(state, prevCursor, windowRows)
+			renderRowAt(state, state.cursor, windowRows)
+		} else if viewportChanged || selectionChanged {
+			// Redraw visible rows when the viewport changes, or when selection changes but cursor moved.
+			prevWindowRows = renderViewport(state, windowRows, prevWindowRows)
+		}
+
+		if headerNeedsUpdate {
+			renderHeader(state)
+		}
 	}
 }
 
@@ -85,64 +118,111 @@ func orderedSelection(selected map[int]struct{}) []int {
 	return out
 }
 
-func renderState(state selectorState) {
-	fmt.Print("\x1b[2J\x1b[H")
-	fmt.Println("Choose providers (city + provider) to add.")
-	fmt.Println("  Use up/down arrows or j/k, Space to select/deselect, Enter to submit, Q to quit")
-	fmt.Printf("  Selected %d / %d\n", len(state.selected), len(state.rows))
+func renderHeader(state selectorState) {
 	windowRows := maxInt(terminalListRows(), 1)
 	end := minInt(state.offset+windowRows, len(state.rows))
-	fmt.Printf("  Showing rows %d-%d\n\n", state.offset+1, end)
-	renderRows(state.rows, state.cursor, state.offset, windowRows, state.selected)
+
+	writeLineAt(1, "Choose providers (city + provider) to add.")
+	writeLineAt(2, "  Use up/down arrows or j/k, Space to select/deselect, Enter to submit, Q to quit")
+	writeLineAt(3, fmt.Sprintf("  Selected %d / %d", len(state.selected), len(state.rows)))
+	writeLineAt(4, fmt.Sprintf("  Showing rows %d-%d", state.offset+1, end))
+	writeLineAt(5, "")
 }
 
-func renderRows(rows []selectionRow, cursor int, offset int, windowRows int, selected map[int]struct{}) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+func renderViewport(state selectorState, windowRows int, previousRenderedRows int) int {
+	dataRows := maxInt(windowRows, 1)
+	listHeaderLine := listHeaderLines
+	listStartLine := listHeaderLines + 1
+	renderedRows := 0
+
+	writeLineAt(listHeaderLine, headerRowLine())
+
+	for i := 0; i < dataRows; i++ {
+		rowIndex := state.offset + i
+		lineNo := listStartLine + i
+		if rowIndex >= len(state.rows) {
+			writeLineAt(lineNo, "")
+			continue
+		}
+		writeLineAt(lineNo, formatRowLine(rowIndex, state.rows[rowIndex], state.cursor, state.selected))
+		renderedRows++
+	}
+
+	if previousRenderedRows > dataRows {
+		for i := dataRows; i < previousRenderedRows; i++ {
+			writeLineAt(listStartLine+i, "")
+		}
+	}
+
+	return renderedRows
+}
+
+func renderRowAt(state selectorState, rowIndex int, windowRows int) {
+	if rowIndex < 0 || rowIndex >= len(state.rows) {
+		return
+	}
+	if rowIndex < state.offset || rowIndex >= state.offset+maxInt(windowRows, 1) {
+		return
+	}
+	lineNo := listHeaderLines + 1 + (rowIndex - state.offset)
+	writeLineAt(lineNo, formatRowLine(rowIndex, state.rows[rowIndex], state.cursor, state.selected))
+}
+
+func formatRowLine(index int, row selectionRow, cursor int, selected map[int]struct{}) string {
+	var b strings.Builder
+	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 	defer w.Flush()
 
-	_, _ = fmt.Fprintln(w, "Idx\tSel\tCountry\tCity\tProvider\tHost\tStatus\tSpeed\tRelays\tPre ping\tLatency\tDownload\tUpload\tLocation")
-	last := minInt(offset+windowRows, len(rows))
-	for i := offset; i < last; i++ {
-		row := rows[i]
-		cursorMark := " "
-		if i == cursor {
-			cursorMark = ">"
-		}
-		checkMark := " "
-		if _, ok := selected[i]; ok {
-			checkMark = "*"
-		}
-		prePing := formatMS(row.prePingMS)
-		lat := formatMS(row.latencyMS)
-		download := formatSpeed(row.downloadMB)
-		upload := formatSpeed(row.uploadMB)
-		relays := "0"
-		if row.relayCount > 0 {
-			relays = fmt.Sprintf("%d", row.relayCount)
-		}
-		location := row.cityName
-		if row.countryName != "" {
-			location = fmt.Sprintf("%s (%s)", row.cityName, row.countryName)
-		}
-
-		_, _ = fmt.Fprintf(w, "%s%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			cursorMark,
-			i+1,
-			checkMark,
-			strings.ToUpper(row.countryCode),
-			row.cityCode,
-			row.providerRange,
-			row.providerHost,
-			row.providerStatus,
-			row.providerSpeed,
-			relays,
-			prePing,
-			lat,
-			download,
-			upload,
-			location,
-		)
+	cursorMark := " "
+	if index == cursor {
+		cursorMark = ">"
 	}
+	checkMark := " "
+	if _, ok := selected[index]; ok {
+		checkMark = "*"
+	}
+	prePing := formatMS(row.prePingMS)
+	lat := formatMS(row.latencyMS)
+	download := formatSpeed(row.downloadMB)
+	upload := formatSpeed(row.uploadMB)
+	relays := "0"
+	if row.relayCount > 0 {
+		relays = fmt.Sprintf("%d", row.relayCount)
+	}
+	location := row.cityName
+	if row.countryName != "" {
+		location = fmt.Sprintf("%s (%s)", row.cityName, row.countryName)
+	}
+
+		_, _ = fmt.Fprintf(w, "%s%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+		cursorMark,
+		index+1,
+		checkMark,
+		strings.ToUpper(row.countryCode),
+		row.cityCode,
+		row.providerRange,
+		row.providerHost,
+		row.providerStatus,
+		row.providerSpeed,
+		relays,
+		prePing,
+		lat,
+		download,
+		upload,
+		location,
+	)
+	_ = w.Flush()
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func headerRowLine() string {
+	var b strings.Builder
+	header := "Idx\tSel\tCountry\tCity\tProvider\tHost\tStatus\tSpeed\tRelays\tPre ping\tLatency\tDownload\tUpload\tLocation"
+	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+	defer w.Flush()
+	_, _ = fmt.Fprintln(w, header)
+	_ = w.Flush()
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func updateOffset(state *selectorState) {
@@ -179,6 +259,10 @@ func terminalListRows() int {
 	return rows
 }
 
+func writeLineAt(line int, value string) {
+	fmt.Printf("\x1b[%d;1H\x1b[2K%s", line, value)
+}
+
 func maxInt(a, b int) int {
 	if a > b {
 		return a
@@ -206,5 +290,3 @@ func formatSpeed(value float64) string {
 	}
 	return fmt.Sprintf("%.1f", value)
 }
-
-
