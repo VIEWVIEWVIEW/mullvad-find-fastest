@@ -5,6 +5,8 @@ package main
 import (
 	"bufio"
 	"io"
+	"os"
+	"strconv"
 )
 
 func enableRawMode() (func(), error) {
@@ -19,17 +21,26 @@ func readKey(reader *bufio.Reader) (keyCode, error) {
 	switch ch {
 	case '\r', '\n':
 		return keyEnter, nil
+	case 'k', 'K':
+		return keyUp, nil
+	case 'j', 'J':
+		return keyDown, nil
 	case 3:
 		return keyCtrlC, nil
 	case 'q', 'Q':
 		return keyQuit, nil
-	case 'a', 'A':
-		return keyAll, nil
-	case 'c', 'C':
-		return keyClear, nil
 	case ' ':
 		return keySpace, nil
 	default:
 		return keyOther, nil
 	}
+}
+
+func terminalHeight() int {
+	if lines := os.Getenv("LINES"); lines != "" {
+		if value, err := strconv.Atoi(lines); err == nil && value > 0 {
+			return value
+		}
+	}
+	return 24
 }

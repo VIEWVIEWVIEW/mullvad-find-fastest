@@ -11,9 +11,16 @@ go build -o mullvad-benchmark.exe ./cmd/mullvad-benchmark
 go build -o mullvad-list-builder.exe ./cmd/mullvad-list-builder
 
 # 2) Run recommended pipeline (ping first, then benchmark)
-./Start-MullvadBenchmark.ps1 -MaxPing 80 -Exclude us -Exclude se-mma -BenchmarkOutput benchmark.json
+# Start-MullvadBenchmark.ps1 defaults -BenchmarkOutput to benchmark.json.
+./Start-MullvadBenchmark.ps1 -MaxPing 80 -Exclude @("us","se-mma")
 
-# 3) Build a custom list from best results
+# 3) Build a custom list in the Mullvad client from best results
+./mullvad-list-builder.exe --input benchmark.json --name "Fast relays"
+```
+
+To add the selected rows to an actual Mullvad custom list in the client, run:
+
+```powershell
 ./mullvad-list-builder.exe --input benchmark.json --name "Fast relays"
 ```
 
@@ -29,7 +36,7 @@ go build -o mullvad-list-builder.exe ./cmd/mullvad-list-builder
 - `Start-MullvadBenchmark.ps1` - orchestrates the workflow (recommended).
 - `mullvad-ping.exe` - collects ICMP latency per relay.
 - `mullvad-benchmark.exe` - runs download and upload speed tests.
-- `mullvad-list-builder.exe` - interactively adds city + provider buckets to a Mullvad custom list.
+- `mullvad-list-builder.exe` - interactively builds and applies a Mullvad custom list from city + provider buckets.
 
 ## Build all binaries
 
@@ -50,24 +57,26 @@ go build -o mullvad-list-builder.exe ./cmd/mullvad-list-builder
 
 ### Parameters
 
-- `-MaxPing <ms>` (required to run the ping phase)
-- `-Exclude <string[]>` (repeatable)
-- `-SkipPing` (force benchmark-only mode)
-- `-PingOutput <path>` (default: `mullvad-ping-results.json`)
-- `-BenchmarkOutput <path>` (default: `benchmark.json`)
+| Parameter | Example | Description |
+| --- | --- | --- |
+| `-MaxPing <ms>` | `-MaxPing 80` | Ping threshold in ms. If provided, the script runs ping first and then benchmarks only entries at or below this ping value. Omit to skip ping entirely (unless `-SkipPing` is used). |
+| `-Exclude <string[]>` | `-Exclude @("us","se-mma")` | Exclude one or more location filters. The parameter is an array; pass one array value instead of repeating the parameter. |
+| `-SkipPing` | `-SkipPing` | Skip pinging and benchmark directly from current relay list. Equivalent to benchmark-only mode. |
+| `-PingOutput <path>` | `-PingOutput c:\tmp\ping.json` | Optional custom output path for ping results. Defaults to `mullvad-ping-results.json`. |
+| `-BenchmarkOutput <path>` | `-BenchmarkOutput c:\tmp\bench.json` | Optional custom output path for benchmark results. Defaults to `benchmark.json` in this wrapper script. |
 
 ### Examples
 
 Run ping first and then benchmark only relays with pre-ping <= 80ms:
 
 ```powershell
-./Start-MullvadBenchmark.ps1 -MaxPing 80 -Exclude us -Exclude se-mma -BenchmarkOutput benchmark.json
+./Start-MullvadBenchmark.ps1 -MaxPing 80 -Exclude @("us","se-mma") -BenchmarkOutput benchmark.json
 ```
 
 Run benchmark only (skip ping):
 
 ```powershell
-./Start-MullvadBenchmark.ps1 -SkipPing -Exclude fr -Exclude de-par-1
+./Start-MullvadBenchmark.ps1 -SkipPing -Exclude @("fr","de-par-1")
 ```
 
 Use explicit output files:
@@ -127,6 +136,8 @@ Output files:
 
 ### `mullvad-list-builder.exe`
 
+You can build and apply a custom list directly inside the Mullvad client from a benchmark file.
+
 #### Flags
 
 - `--input <path>`: benchmark JSON path (default: `benchmark.json` or latest `benchmark-*.json`).
@@ -146,10 +157,8 @@ If `--name` is omitted, you are prompted for it.
 
 ### List-builder controls
 
-- Up/Down: move selection cursor
+- ↑ / ↓: move selection cursor
 - Space: toggle current row
-- A: select all rows
-- C: clear selection
 - Enter: add selected city+provider buckets
 - Q: quit without changes
 

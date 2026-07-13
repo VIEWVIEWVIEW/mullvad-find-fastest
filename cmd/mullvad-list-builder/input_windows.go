@@ -12,6 +12,28 @@ var (
 	kernel32           = syscall.NewLazyDLL("kernel32.dll")
 	procGetConsoleMode = kernel32.NewProc("GetConsoleMode")
 	procSetConsoleMode = kernel32.NewProc("SetConsoleMode")
+	procGetConsoleScreenBufferInfo = kernel32.NewProc("GetConsoleScreenBufferInfo")
+)
+
+type (
+	short int16
+	coord struct {
+		x short
+		y short
+	}
+	smallRect struct {
+		left   short
+		top    short
+		right  short
+		bottom short
+	}
+	consoleScreenBufferInfo struct {
+		size      coord
+		cursorPos coord
+		attrs     uint16
+		window    smallRect
+		maxWindow coord
+	}
 )
 
 const (
@@ -102,10 +124,10 @@ func readKey(reader *bufio.Reader) (keyCode, error) {
 		return keySpace, nil
 	case '\r', '\n':
 		return keyEnter, nil
-	case 'a', 'A':
-		return keyAll, nil
-	case 'c', 'C':
-		return keyClear, nil
+	case 'k', 'K':
+		return keyUp, nil
+	case 'j', 'J':
+		return keyDown, nil
 	case 'q', 'Q':
 		return keyQuit, nil
 	case 3:
@@ -113,3 +135,25 @@ func readKey(reader *bufio.Reader) (keyCode, error) {
 	}
 	return keyOther, nil
 }
+
+func terminalHeight() int {
+	out, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
+	if err != nil {
+		return 24
+	}
+	var info consoleScreenBufferInfo
+	ret, _, err := procGetConsoleScreenBufferInfo.Call(uintptr(out), uintptr(unsafe.Pointer(&info)))
+	if ret == 0 {
+		return 24
+	}
+	if err != nil && err != syscall.Errno(0) {
+		return 24
+	}
+
+	height := int(info.window.bottom-info.window.top) + 1
+	if height <= 0 {
+		return 24
+	}
+	return height
+}
+
