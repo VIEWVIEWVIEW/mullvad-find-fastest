@@ -335,6 +335,10 @@ func terminalListRows() int {
 	return rows
 }
 
+func cleanupSelectionTerminal() {
+	fmt.Print("\x1b[0m\x1b[2J\x1b[?25h\x1b[H")
+}
+
 func writeLineAt(line int, value string) {
 	fmt.Printf("\x1b[%d;1H\x1b[2K%s", line, value)
 }

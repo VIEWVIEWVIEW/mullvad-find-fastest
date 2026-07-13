@@ -90,6 +90,7 @@ func main() {
 	selectedIdx, err := promptForSelection(rows)
 	if err != nil {
 		if errors.Is(err, errSelectionCancelled) {
+			cleanupSelectionTerminal()
 			fmt.Println("selection cancelled")
 			return
 		}
