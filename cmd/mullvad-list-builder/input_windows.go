@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	kernel32           = syscall.NewLazyDLL("kernel32.dll")
-	procGetConsoleMode = kernel32.NewProc("GetConsoleMode")
-	procSetConsoleMode = kernel32.NewProc("SetConsoleMode")
+	kernel32                       = syscall.NewLazyDLL("kernel32.dll")
+	procGetConsoleMode             = kernel32.NewProc("GetConsoleMode")
+	procSetConsoleMode             = kernel32.NewProc("SetConsoleMode")
 	procGetConsoleScreenBufferInfo = kernel32.NewProc("GetConsoleScreenBufferInfo")
 )
 
@@ -122,6 +122,10 @@ func readKey(reader *bufio.Reader) (keyCode, error) {
 		}
 	case ' ':
 		return keySpace, nil
+	case 'f', 'F':
+		return keyFilter, nil
+	case 'a', 'A':
+		return keySelectAll, nil
 	case '\r', '\n':
 		return keyEnter, nil
 	case 'k', 'K':
@@ -156,4 +160,3 @@ func terminalHeight() int {
 	}
 	return height
 }
-

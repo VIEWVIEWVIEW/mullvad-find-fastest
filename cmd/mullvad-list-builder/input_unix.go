@@ -31,6 +31,10 @@ func readKey(reader *bufio.Reader) (keyCode, error) {
 		return keyQuit, nil
 	case ' ':
 		return keySpace, nil
+	case 'f', 'F':
+		return keyFilter, nil
+	case 'a', 'A':
+		return keySelectAll, nil
 	default:
 		return keyOther, nil
 	}

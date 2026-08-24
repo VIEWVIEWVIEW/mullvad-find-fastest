@@ -3,29 +3,29 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 )
 
-const listHeaderLines = 6
+const listHeaderLines = 7
 const (
-	colCursorWidth     = 2
-	colIdxWidth        = 4
-	colSelWidth       = 3
-	colCountryWidth   = 8
-	colCityWidth      = 6
-	colProviderWidth  = 12
-	colHostWidth      = 18
-	colStatusWidth    = 10
-	colSpeedWidth     = 7
-	colRelaysWidth    = 6
-	colPrePingWidth   = 9
-	colLatencyWidth   = 9
-	colDownloadWidth  = 9
-	colUploadWidth    = 8
-	colLocationWidth  = 36
+	colCursorWidth   = 2
+	colIdxWidth      = 4
+	colSelWidth      = 3
+	colCountryWidth  = 8
+	colCityWidth     = 6
+	colProviderWidth = 12
+	colHostWidth     = 18
+	colStatusWidth   = 10
+	colSpeedWidth    = 7
+	colRelaysWidth   = 6
+	colPrePingWidth  = 9
+	colLatencyWidth  = 9
+	colDownloadWidth = 9
+	colUploadWidth   = 8
+	colLocationWidth = 36
 )
 
 var colAlignRight = map[int]bool{
@@ -46,18 +46,20 @@ var colAlignRight = map[int]bool{
 	14: false, // location
 }
 
-func promptForSelection(rows []selectionRow) ([]int, error) {
-	selected, err := runInteractiveSelector(rows)
+func promptForSelection(rows []selectionRow, filters selectorFilters) ([]int, error) {
+	selected, err := runInteractiveSelector(rows, filters)
 	return selected, err
 }
 
-func runInteractiveSelector(rows []selectionRow) ([]int, error) {
+func runInteractiveSelector(rows []selectionRow, filters selectorFilters) ([]int, error) {
 	state := selectorState{
-		rows:     rows,
-		selected: map[int]struct{}{},
+		allRows:  rows,
+		selected: map[string]struct{}{},
 		cursor:   0,
 		offset:   0,
+		filters:  filters,
 	}
+	state.refreshVisible()
 
 	reader := bufio.NewReaderSize(os.Stdin, 1)
 	restore, err := enableRawMode()
@@ -66,7 +68,7 @@ func runInteractiveSelector(rows []selectionRow) ([]int, error) {
 	}
 	defer restore()
 
-	if len(state.rows) == 0 {
+	if len(state.visible) == 0 && !state.filters.active() {
 		return nil, nil
 	}
 
@@ -96,22 +98,50 @@ func runInteractiveSelector(rows []selectionRow) ([]int, error) {
 				state.cursor--
 			}
 		case keyDown:
-			if state.cursor < len(state.rows)-1 {
+			if state.cursor < len(state.visible)-1 {
 				state.cursor++
 			}
 		case keyHome:
 			state.cursor = 0
 		case keyEnd:
-			state.cursor = len(state.rows) - 1
-		case keySpace:
-			if _, ok := state.selected[state.cursor]; ok {
-				delete(state.selected, state.cursor)
-			} else {
-				state.selected[state.cursor] = struct{}{}
+			if len(state.visible) > 0 {
+				state.cursor = len(state.visible) - 1
 			}
+		case keySpace:
+			if row := state.currentRow(); row != nil {
+				key := rowSelectionKey(*row)
+				if _, ok := state.selected[key]; ok {
+					delete(state.selected, key)
+				} else {
+					state.selected[key] = struct{}{}
+				}
+			}
+		case keySelectAll:
+			state.selectVisible()
+		case keyFilter:
+			restore()
+			fmt.Print("\x1b[?25h")
+			filters, err := promptSelectorFilters(state.filters)
+			if err != nil {
+				return nil, err
+			}
+			state.filters = filters
+			state.refreshVisible()
+			state.cursor = 0
+			state.offset = 0
+			restore, err = enableRawMode()
+			if err != nil {
+				return nil, err
+			}
+			fmt.Print("\x1b[?25l")
+			fmt.Print("\x1b[0m\x1b[2J\x1b[H")
+			windowRows = maxInt(terminalListRows(), 1)
+			prevWindowRows = renderViewport(state, windowRows, 0)
+			renderHeader(state)
+			continue
 		case keyEnter:
 			cleanupSelectionTerminal()
-			return orderedSelection(state.selected), nil
+			return orderedSelection(state.allRows, state.selected), nil
 		}
 
 		updateOffset(&state)
@@ -140,29 +170,170 @@ func runInteractiveSelector(rows []selectionRow) ([]int, error) {
 
 type selectorState struct {
 	cursor   int
-	rows     []selectionRow
-	selected map[int]struct{}
+	allRows  []selectionRow
+	visible  []int
+	selected map[string]struct{}
 	offset   int
+	filters  selectorFilters
 }
 
-func orderedSelection(selected map[int]struct{}) []int {
-	out := make([]int, 0, len(selected))
-	for idx := range selected {
-		out = append(out, idx)
+func (s *selectorState) refreshVisible() {
+	s.visible = s.visible[:0]
+	for idx, row := range s.allRows {
+		if s.filters.matches(row) {
+			s.visible = append(s.visible, idx)
+		}
 	}
-	sort.Ints(out)
+	if len(s.visible) == 0 {
+		s.cursor = 0
+		return
+	}
+	if s.cursor >= len(s.visible) {
+		s.cursor = len(s.visible) - 1
+	}
+}
+
+func (s selectorState) currentRow() *selectionRow {
+	if s.cursor < 0 || s.cursor >= len(s.visible) {
+		return nil
+	}
+	return &s.allRows[s.visible[s.cursor]]
+}
+
+func (s *selectorState) selectVisible() {
+	for _, idx := range s.visible {
+		s.selected[rowSelectionKey(s.allRows[idx])] = struct{}{}
+	}
+}
+
+func rowSelectionKey(row selectionRow) string {
+	return fmt.Sprintf("%s/%s/%d", row.countryCode, row.cityCode, row.provider)
+}
+
+func orderedSelection(rows []selectionRow, selected map[string]struct{}) []int {
+	out := make([]int, 0, len(selected))
+	for idx, row := range rows {
+		if _, ok := selected[rowSelectionKey(row)]; ok {
+			out = append(out, idx)
+		}
+	}
 	return out
 }
 
 func renderHeader(state selectorState) {
 	windowRows := maxInt(terminalListRows(), 1)
-	end := minInt(state.offset+windowRows, len(state.rows))
+	end := minInt(state.offset+windowRows, len(state.visible))
 
 	writeLineAt(1, "Choose providers (city + provider) to add.")
-	writeLineAt(2, "  Use up/down arrows or j/k, Space to select/deselect, Enter to submit, Q to quit")
-	writeLineAt(3, fmt.Sprintf("  Selected %d / %d", len(state.selected), len(state.rows)))
-	writeLineAt(4, fmt.Sprintf("  Showing rows %d-%d", state.offset+1, end))
+	writeLineAt(2, "  Up/down or j/k move | Space select | a select all | f filters | Enter apply | Q quit")
+	writeLineAt(3, fmt.Sprintf("  Filters: %s", formatSelectorFilters(state.filters)))
+	writeLineAt(4, fmt.Sprintf("  Selected %d | Showing rows %d-%d of %d", len(state.selected), showingStart(state.offset, end), end, len(state.visible)))
 	writeLineAt(5, "")
+	writeLineAt(6, "")
+}
+
+func showingStart(offset, end int) int {
+	if end == 0 {
+		return 0
+	}
+	return offset + 1
+}
+
+func formatSelectorFilters(filters selectorFilters) string {
+	parts := make([]string, 0, 3)
+	if filters.maxLatencyMS > 0 {
+		parts = append(parts, fmt.Sprintf("latency <= %.0f ms", filters.maxLatencyMS))
+	}
+	if filters.minDownloadMB > 0 {
+		parts = append(parts, fmt.Sprintf("download >= %.1f Mbps", filters.minDownloadMB))
+	}
+	if filters.minUploadMB > 0 {
+		parts = append(parts, fmt.Sprintf("upload >= %.1f Mbps", filters.minUploadMB))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func promptSelectorFilters(current selectorFilters) (selectorFilters, error) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("\x1b[2J\x1b[H")
+	fmt.Println("Interactive filters (blank keeps the current value; '-' clears it)")
+
+	maxLatency, err := promptThreshold(reader, "Max latency (ms)", current.maxLatencyMS)
+	if err != nil {
+		return selectorFilters{}, err
+	}
+	minDownload, err := promptThreshold(reader, "Min download (Mbps)", current.minDownloadMB)
+	if err != nil {
+		return selectorFilters{}, err
+	}
+	minUpload, err := promptThreshold(reader, "Min upload (Mbps)", current.minUploadMB)
+	if err != nil {
+		return selectorFilters{}, err
+	}
+	ownership, err := promptOwnership(reader, current.ownership)
+	if err != nil {
+		return selectorFilters{}, err
+	}
+
+	return selectorFilters{
+		maxLatencyMS:  maxLatency,
+		minDownloadMB: minDownload,
+		minUploadMB:   minUpload,
+		ownership:     ownership,
+	}, nil
+}
+
+func promptOwnership(reader *bufio.Reader, current string) (string, error) {
+	if current == "" {
+		current = "all"
+	}
+	fmt.Printf("Provider ownership (all/rented/owned) [%s]: ", current)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(line)
+	if value == "" {
+		return current, nil
+	}
+	if value == "-" {
+		return "all", nil
+	}
+	normalized := normalizeOwnershipFilter(value)
+	if normalized == "" {
+		return "", fmt.Errorf("invalid provider ownership %q; use all, rented, or owned", value)
+	}
+	return normalized, nil
+}
+
+func promptThreshold(reader *bufio.Reader, label string, current float64) (float64, error) {
+	currentText := "none"
+	if current > 0 {
+		currentText = strconv.FormatFloat(current, 'f', -1, 64)
+	}
+	fmt.Printf("%s [%s]: ", label, currentText)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return 0, err
+	}
+	value := strings.TrimSpace(line)
+	if value == "" {
+		return current, nil
+	}
+	if value == "-" || strings.EqualFold(value, "none") {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed < 0 {
+		if err == nil {
+			err = fmt.Errorf("threshold must be a finite non-negative number")
+		}
+		return 0, fmt.Errorf("invalid %s: %w", label, err)
+	}
+	return parsed, nil
 }
 
 func renderViewport(state selectorState, windowRows int, previousRenderedRows int) int {
@@ -176,11 +347,12 @@ func renderViewport(state selectorState, windowRows int, previousRenderedRows in
 	for i := 0; i < dataRows; i++ {
 		rowIndex := state.offset + i
 		lineNo := listStartLine + i
-		if rowIndex >= len(state.rows) {
+		if rowIndex >= len(state.visible) {
 			writeLineAt(lineNo, "")
 			continue
 		}
-		writeLineAt(lineNo, formatRowLine(rowIndex, state.rows[rowIndex], state.cursor, state.selected))
+		allIndex := state.visible[rowIndex]
+		writeLineAt(lineNo, formatRowLine(rowIndex, state.allRows[allIndex], state.cursor, state.selected))
 		renderedRows++
 	}
 
@@ -194,23 +366,24 @@ func renderViewport(state selectorState, windowRows int, previousRenderedRows in
 }
 
 func renderRowAt(state selectorState, rowIndex int, windowRows int) {
-	if rowIndex < 0 || rowIndex >= len(state.rows) {
+	if rowIndex < 0 || rowIndex >= len(state.visible) {
 		return
 	}
 	if rowIndex < state.offset || rowIndex >= state.offset+maxInt(windowRows, 1) {
 		return
 	}
 	lineNo := listHeaderLines + 1 + (rowIndex - state.offset)
-	writeLineAt(lineNo, formatRowLine(rowIndex, state.rows[rowIndex], state.cursor, state.selected))
+	allIndex := state.visible[rowIndex]
+	writeLineAt(lineNo, formatRowLine(rowIndex, state.allRows[allIndex], state.cursor, state.selected))
 }
 
-func formatRowLine(index int, row selectionRow, cursor int, selected map[int]struct{}) string {
+func formatRowLine(index int, row selectionRow, cursor int, selected map[string]struct{}) string {
 	cursorMark := " "
 	if index == cursor {
 		cursorMark = ">"
 	}
 	checkMark := " "
-	if _, ok := selected[index]; ok {
+	if _, ok := selected[rowSelectionKey(row)]; ok {
 		checkMark = "*"
 	}
 	prePing := formatMS(row.prePingMS)
@@ -303,7 +476,7 @@ func formatField(value string, width int, alignRight bool) string {
 }
 
 func updateOffset(state *selectorState) {
-	if len(state.rows) == 0 {
+	if len(state.visible) == 0 {
 		state.offset = 0
 		return
 	}
@@ -315,7 +488,7 @@ func updateOffset(state *selectorState) {
 	if state.cursor >= state.offset+windowRows {
 		state.offset = state.cursor - windowRows + 1
 	}
-	maxOffset := len(state.rows) - windowRows
+	maxOffset := len(state.visible) - windowRows
 	if maxOffset < 0 {
 		maxOffset = 0
 	}

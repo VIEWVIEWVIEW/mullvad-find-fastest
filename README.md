@@ -181,6 +181,10 @@ You can build and apply a custom list directly inside the Mullvad client from a 
 - `--include-failed`: include entries that failed speed tests.
 - `--append`: append to existing list.
 - `--limit <int>`: limit rows shown in selector.
+- `--max-latency <ms>`: initial maximum measured VPN latency; `0` means no limit.
+- `--min-download <mbps>`: initial minimum measured download speed; `0` means no limit.
+- `--min-upload <mbps>`: initial minimum measured upload speed; `0` means no limit.
+- `--ownership <value>`: initial provider ownership filter: `all`, `rented`, or `owned`.
 - `--timeout <duration>`: CLI timeout for Mullvad commands (default: `30s`).
 
 Example:
@@ -194,11 +198,14 @@ If `--name` is omitted, you are prompted for it.
 ### List-builder controls
 
 - ↑ / ↓: move selection cursor
+- `j` / `k`: move selection cursor
 - Space: toggle current row
+- `a`: select all rows currently visible after filtering
+- `f`: edit latency, download, upload, and rented/owned filters interactively; use blank to keep a value and `-` to clear it
 - Enter: add selected city+provider buckets
 - Q: quit without changes
 
-Each row represents a city+provider bucket (for example `000-099`, `100-199`) and adds all relay hostnames for that bucket into the chosen Mullvad custom list.
+The selector behaves like a compact htop-style viewport: it redraws only the visible rows, shows the active filters and selection count, and keeps selections when filters change. Each row represents a city+provider bucket (for example `000-099`, `100-199`) and adds all relay hostnames for that bucket into the chosen Mullvad custom list.
 
 ### `mullvad-proxy-benchmark.exe`
 

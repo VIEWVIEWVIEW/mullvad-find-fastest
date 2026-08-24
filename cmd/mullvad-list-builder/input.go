@@ -11,6 +11,8 @@ const (
 	keyEnd
 	keySpace
 	keyEnter
+	keyFilter
+	keySelectAll
 	keyQuit
 	keyCtrlC
 	keyOther

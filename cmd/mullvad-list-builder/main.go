@@ -35,8 +35,45 @@ type selectionRow struct {
 	latencyMS  float64
 	downloadMB float64
 	uploadMB   float64
+	hasSpeed   bool
 	relays     []string
 	relayCount int
+}
+
+type selectorFilters struct {
+	maxLatencyMS  float64
+	minDownloadMB float64
+	minUploadMB   float64
+	ownership     string
+}
+
+func (f selectorFilters) active() bool {
+	return f.maxLatencyMS > 0 || f.minDownloadMB > 0 || f.minUploadMB > 0 || f.ownership != "" && f.ownership != "all"
+}
+
+func (f selectorFilters) matches(row selectionRow) bool {
+	if f.active() && !row.hasSpeed {
+		return false
+	}
+	if f.maxLatencyMS > 0 && row.latencyMS > f.maxLatencyMS {
+		return false
+	}
+	if f.minDownloadMB > 0 && row.downloadMB < f.minDownloadMB {
+		return false
+	}
+	if f.minUploadMB > 0 && row.uploadMB < f.minUploadMB {
+		return false
+	}
+	switch f.ownership {
+	case "", "all":
+		return true
+	case "owned":
+		return strings.Contains(row.providerStatus, "owned")
+	case "rented":
+		return strings.Contains(row.providerStatus, "rented")
+	default:
+		return false
+	}
 }
 
 func main() {
@@ -45,8 +82,19 @@ func main() {
 	includeFailed := flag.Bool("include-failed", false, "include benchmark rows without speed results")
 	appendList := flag.Bool("append", false, "append to an existing list instead of replacing it")
 	limit := flag.Int("limit", 0, "only keep the top N rows before selection")
+	maxLatency := flag.Float64("max-latency", 0, "initial maximum measured VPN latency in ms; 0 means no limit")
+	minDownload := flag.Float64("min-download", 0, "initial minimum measured download speed in Mbps; 0 means no limit")
+	minUpload := flag.Float64("min-upload", 0, "initial minimum measured upload speed in Mbps; 0 means no limit")
+	ownership := flag.String("ownership", "all", "initial provider ownership filter: all, rented, or owned")
 	timeout := flag.Duration("timeout", 30*time.Second, "timeout for Mullvad CLI calls")
 	flag.Parse()
+	if *maxLatency < 0 || *minDownload < 0 || *minUpload < 0 {
+		fatal(fmt.Errorf("filter thresholds cannot be negative"))
+	}
+	*ownership = normalizeOwnershipFilter(*ownership)
+	if *ownership == "" {
+		fatal(fmt.Errorf("ownership must be all, rented, or owned"))
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -87,7 +135,12 @@ func main() {
 		fatal(fmt.Errorf("custom list name cannot be empty"))
 	}
 
-	selectedIdx, err := promptForSelection(rows)
+	selectedIdx, err := promptForSelection(rows, selectorFilters{
+		maxLatencyMS:  *maxLatency,
+		minDownloadMB: *minDownload,
+		minUploadMB:   *minUpload,
+		ownership:     *ownership,
+	})
 	if err != nil {
 		if errors.Is(err, errSelectionCancelled) {
 			cleanupSelectionTerminal()
@@ -113,6 +166,19 @@ func main() {
 		fmt.Printf("Failed to add %d relays. See mullvad CLI errors above.\n", failed)
 	}
 	os.Exit(0)
+}
+
+func normalizeOwnershipFilter(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "all":
+		return "all"
+	case "owned", "mullvad-owned":
+		return "owned"
+	case "rented":
+		return "rented"
+	default:
+		return ""
+	}
 }
 
 func resolveBenchmarkInput(path string) (string, error) {
@@ -225,6 +291,7 @@ func buildRows(file bench.BenchmarkFile, relays []bench.Relay, includeFailed boo
 			row.providerSpeed = "-"
 		}
 		if result.Speed != nil {
+			row.hasSpeed = true
 			row.prePingMS = result.PrePingMS
 			row.latencyMS = result.Speed.LatencyMS
 			row.downloadMB = result.Speed.DownloadMB
